@@ -132,6 +132,10 @@ function matchesScope(
   row,
   scope
 ) {
+  if (scope?.allAreas === true) {
+    return true;
+  }
+
   if (
     scope.district &&
     normalizeKey(
