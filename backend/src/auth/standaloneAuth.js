@@ -197,7 +197,7 @@ export function changeStandalonePassword(passwordChangeToken, newPassword) {
 
   // Re-resolve the employee's current Kingdee Department/Role after
   // completing first-time password setup.
-  return createStandaloneSession(normalizedEmployeeNo);
+  return createStandaloneSession(normalizedEmployeeNo, password);
 }
 
 export async function createStandaloneSession(employeeNo, password) {
