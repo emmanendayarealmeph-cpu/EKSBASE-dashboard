@@ -1,6 +1,7 @@
 import app from "./app.js";
 import { config } from "./config/env.js";
 import { KingdeeClient } from "./kingdee/kingdeeClient.js";
+import { startSerialSyncJob } from "./jobs/serialSyncJob.js";
 
 const kingdeeClient = new KingdeeClient(config.kingdee);
 
@@ -9,5 +10,13 @@ app.listen(config.port, () => {
     `🚀 Server running on http://localhost:${config.port} (${config.nodeEnv})`
   );
 
-  console.log("Kingdee client configuration loaded successfully.");
+  console.log(
+    "Kingdee client configuration loaded successfully."
+  );
+
+  startSerialSyncJob({
+    intervalMinutes: 30,
+    days: 1,
+    limit: 100,
+  });
 });
