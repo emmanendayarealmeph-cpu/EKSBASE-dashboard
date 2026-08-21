@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,10 +9,23 @@ const __filename =
 const __dirname =
   path.dirname(__filename);
 
-const databasePath =
+const databaseDirectory =
   path.resolve(
     __dirname,
-    "../../data/kingdee.db"
+    "../../data"
+  );
+
+fs.mkdirSync(
+  databaseDirectory,
+  {
+    recursive: true,
+  }
+);
+
+const databasePath =
+  path.join(
+    databaseDirectory,
+    "kingdee.db"
   );
 
 export const db =
