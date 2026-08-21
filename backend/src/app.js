@@ -19,11 +19,18 @@ const app = express();
  * Backend:
  * http://localhost:3000
  */
+const allowedOrigins = new Set([
+  "http://localhost:3001",
+  "https://eksbase-dashboard-frontend.onrender.com",
+]);
+
 app.use((req, res, next) => {
-  res.header(
-    "Access-Control-Allow-Origin",
-    "http://localhost:3001"
-  );
+  const requestOrigin = req.headers.origin;
+
+  if (allowedOrigins.has(requestOrigin)) {
+    res.header("Access-Control-Allow-Origin", requestOrigin);
+    res.header("Vary", "Origin");
+  }
 
   res.header(
     "Access-Control-Allow-Methods",
