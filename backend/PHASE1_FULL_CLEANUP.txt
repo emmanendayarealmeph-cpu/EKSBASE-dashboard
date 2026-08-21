@@ -1,0 +1,26 @@
+PHASE 1 FULL CLEANUP
+
+Purpose
+- Restore the stable Phase 1 source code.
+- Remove the experimental SQLite inventory_type column.
+- Remove the temporary Kingdee View diagnostic file if it exists.
+
+Stable fixes retained
+- Inclusive user-facing `to` date handling.
+- Correct stock_status_code UPSERT update.
+- On-hand Serial Main File flow remains read-only.
+
+How to apply
+1. Stop the backend server.
+2. Copy the included src files into your backend project.
+3. From C:\Users\enday\kingdee-data-platform\backend run:
+
+   node scripts/cleanupPhase1.js
+
+4. The script automatically creates a kingdee.db backup before changing the database.
+5. Restart:
+
+   npm start
+
+The cleanup script verifies that the serial_main_file record count is unchanged
+and aborts if another SQLite object depends on inventory_type.

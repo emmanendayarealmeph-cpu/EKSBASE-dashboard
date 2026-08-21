@@ -1,0 +1,7 @@
+When DingTalk authentication is ready, add requireAuthenticatedUser to:
+GET /summary
+GET /search
+GET /export
+
+Until then, req.dashboardUser may be absent and the authorization adapter preserves current standalone behavior.
+Once req.dashboardUser is present, query-string scope values are overridden by server-side Employee Access rules.

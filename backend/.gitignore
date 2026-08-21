@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment / credentials
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+data/
+exports/
+
+# OS
+.DS_Store
+Thumbs.db
