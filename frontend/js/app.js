@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://localhost:3000";
+const API_BASE_URL = "https://eksbase-dashboard.onrender.com";
 const AUTH_TOKEN_KEY = "eksbase.auth.token";
 const AUTH_USER_KEY = "eksbase.auth.user";
 
