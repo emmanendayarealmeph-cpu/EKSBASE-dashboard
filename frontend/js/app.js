@@ -805,7 +805,33 @@ function setDateFilterEnabled(type, enabled) {
     updateCustomOptionLabel(type);
   }
 }
+function setDefaultDates() {
+  salesDateEnabledEl.checked =
+    true;
 
+  activationDateEnabledEl.checked =
+    false;
+
+  setDateRange(
+    "sales",
+    "today"
+  );
+
+  setDateRange(
+    "activation",
+    "today"
+  );
+
+  setDateFilterEnabled(
+    "sales",
+    true
+  );
+
+  setDateFilterEnabled(
+    "activation",
+    false
+  );
+}
 function initDateFilters() {
   setDateRange("sales", "today");
   setDateRange("activation", "today");
