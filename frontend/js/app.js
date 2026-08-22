@@ -26,28 +26,17 @@ const loginButtonEl = document.getElementById("loginButton");
 const loginMessageEl = document.getElementById("loginMessage");
 const logoutButtonEl = document.getElementById("logoutButton");
 
-const REMEMBER_ME_KEY = "eksbase.auth.remember";
-const REMEMBERED_EMPLOYEE_KEY = "eksbase.auth.employee";
-
-const rememberMeEl = document.getElementById("rememberMe");
-
-function getRememberPreference() {
-  return localStorage.getItem(REMEMBER_ME_KEY) === "1";
-}
-
 function getStoredAuthToken() {
-  return (
-    localStorage.getItem(AUTH_TOKEN_KEY) ||
-    sessionStorage.getItem(AUTH_TOKEN_KEY) ||
-    ""
-  );
+  // Standalone authentication is session-based. Ignore any legacy persistent
+  // authentication token from localStorage.
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  return sessionStorage.getItem(AUTH_TOKEN_KEY) || "";
 }
 
 let authToken = getStoredAuthToken();
 let authenticatedUser = null;
 let passwordChangeToken = "";
 let resetPasswordToken = "";
-let pendingRememberMe = getRememberPreference();
 
 
 // Password visibility toggles. Keep this isolated from authentication logic.
@@ -95,9 +84,8 @@ function setAuthenticatedUi(isAuthenticated) {
   appShellEl?.classList.toggle("hidden", !isAuthenticated);
 }
 
-function showPasswordChangeUi(token, user, rememberMe = false) {
+function showPasswordChangeUi(token, user) {
   passwordChangeToken = String(token || "");
-  pendingRememberMe = Boolean(rememberMe);
   authenticatedUser = user || null;
   loginScreenEl?.classList.add("hidden");
   appShellEl?.classList.add("hidden");
@@ -140,31 +128,17 @@ function clearStoredAuth() {
 function saveAuth(result) {
   authToken = String(result?.token || "");
   authenticatedUser = result?.user || null;
-  const rememberMe = Boolean(result?.rememberMe ?? pendingRememberMe);
 
   localStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(AUTH_TOKEN_KEY);
 
   if (authToken) {
-    if (rememberMe) {
-      localStorage.setItem(AUTH_TOKEN_KEY, authToken);
-      localStorage.setItem(REMEMBER_ME_KEY, "1");
-    } else {
-      sessionStorage.setItem(AUTH_TOKEN_KEY, authToken);
-      localStorage.removeItem(REMEMBER_ME_KEY);
-    }
+    sessionStorage.setItem(AUTH_TOKEN_KEY, authToken);
   }
 
   if (authenticatedUser) {
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authenticatedUser));
   }
-
-  if (rememberMe && loginEmployeeNoEl?.value?.trim()) {
-    localStorage.setItem(REMEMBERED_EMPLOYEE_KEY, loginEmployeeNoEl.value.trim());
-  }
-
-  pendingRememberMe = rememberMe;
-  if (rememberMeEl) rememberMeEl.checked = rememberMe;
 }
 
 function restoreCachedUser() {
@@ -174,13 +148,6 @@ function restoreCachedUser() {
   } catch {
     authenticatedUser = null;
   }
-
-  const rememberedEmployee = localStorage.getItem(REMEMBERED_EMPLOYEE_KEY) || "";
-  if (loginEmployeeNoEl && rememberedEmployee) {
-    loginEmployeeNoEl.value = rememberedEmployee;
-  }
-
-  if (rememberMeEl) rememberMeEl.checked = getRememberPreference();
 }
 
 function setResetPasswordMessage(message = "", isError = true) {
@@ -231,11 +198,11 @@ async function resetLocalPassword(employeeNo, newPassword) {
   return payload;
 }
 
-async function authenticate(employeeNo, password, rememberMe) {
+async function authenticate(employeeNo, password) {
   const response = await fetch(`${API_BASE_URL}/auth/standalone/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ employeeNo, password, rememberMe: Boolean(rememberMe) }),
+    body: JSON.stringify({ employeeNo, password }),
   });
 
   let payload = null;
@@ -272,24 +239,6 @@ async function validateExistingSession() {
       return true;
     }
 
-    // Remember Me survives a Render restart. The server's in-memory session
-    // does not, so restore the persistent token from Neon.
-    if (localStorage.getItem(AUTH_TOKEN_KEY) === authToken) {
-      response = await fetch(`${API_BASE_URL}/auth/standalone/remember`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-
-      if (response.ok) {
-        const payload = await response.json();
-        authenticatedUser = payload?.user || authenticatedUser;
-        if (authenticatedUser) {
-          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authenticatedUser));
-        }
-        return true;
-      }
-    }
-
     clearStoredAuth();
     return false;
   } catch {
@@ -312,7 +261,6 @@ async function handleLogout() {
     setAuthenticatedUi(false);
     setLoginMessage("");
     loginFormEl?.reset();
-    if (rememberMeEl) rememberMeEl.checked = getRememberPreference();
     loginEmployeeNoEl?.focus();
   }
 }
@@ -336,34 +284,24 @@ loginFormEl?.addEventListener("submit", async (event) => {
 
   const employeeNo = loginEmployeeNoEl.value.trim();
   const password = loginPasswordEl.value;
-  const rememberMe = Boolean(rememberMeEl?.checked);
 
   if (!employeeNo || !password) {
     setLoginMessage("Please enter your Employee No. and password.");
     return;
   }
 
-  pendingRememberMe = rememberMe;
-  if (rememberMe) {
-    localStorage.setItem(REMEMBER_ME_KEY, "1");
-    localStorage.setItem(REMEMBERED_EMPLOYEE_KEY, employeeNo);
-  } else {
-    localStorage.removeItem(REMEMBER_ME_KEY);
-    localStorage.removeItem(REMEMBERED_EMPLOYEE_KEY);
-  }
 
   loginButtonEl.disabled = true;
   setLoginMessage("Signing in...", false);
 
   try {
-    const result = await authenticate(employeeNo, password, rememberMe);
+    const result = await authenticate(employeeNo, password);
     loginPasswordEl.value = "";
 
     if (result?.requiresPasswordChange) {
       showPasswordChangeUi(
         result.passwordChangeToken,
-        result.user,
-        Boolean(result.rememberMe)
+        result.user
       );
       return;
     }
@@ -373,7 +311,6 @@ loginFormEl?.addEventListener("submit", async (event) => {
     loadDashboard();
   } catch (error) {
     clearStoredAuth();
-    if (rememberMeEl) rememberMeEl.checked = rememberMe;
     setLoginMessage(error.message || "Unable to sign in.");
   } finally {
     loginButtonEl.disabled = false;
