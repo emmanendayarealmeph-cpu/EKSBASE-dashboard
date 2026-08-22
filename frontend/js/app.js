@@ -2472,7 +2472,7 @@ applyButton.addEventListener("click", () => {
   loadDashboard();
 });
 
-refreshButton.addEventListener("click", refreshDashboard);
+refreshButton?.addEventListener("click", refreshDashboard);
 
 // Export must be registered before optional navigation controls so a missing
 // back button cannot stop the rest of the dashboard event wiring.
