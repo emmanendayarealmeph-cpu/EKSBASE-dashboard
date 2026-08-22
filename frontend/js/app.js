@@ -26,72 +26,28 @@ const loginButtonEl = document.getElementById("loginButton");
 const loginMessageEl = document.getElementById("loginMessage");
 const logoutButtonEl = document.getElementById("logoutButton");
 
-let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
+const REMEMBER_ME_KEY = "eksbase.auth.remember";
+const REMEMBERED_EMPLOYEE_KEY = "eksbase.auth.employee";
+
+const rememberMeEl = document.getElementById("rememberMe");
+
+function getRememberPreference() {
+  return localStorage.getItem(REMEMBER_ME_KEY) === "1";
+}
+
+function getStoredAuthToken() {
+  return (
+    localStorage.getItem(AUTH_TOKEN_KEY) ||
+    sessionStorage.getItem(AUTH_TOKEN_KEY) ||
+    ""
+  );
+}
+
+let authToken = getStoredAuthToken();
 let authenticatedUser = null;
 let passwordChangeToken = "";
 let resetPasswordToken = "";
-
-function setupPasswordToggle(buttonId, inputId, label) {
-  const button = document.getElementById(buttonId);
-  const input = document.getElementById(inputId);
-  if (!button || !input || button.dataset.passwordToggleBound === "true") return;
-
-  button.type = "button";
-  button.dataset.passwordToggleBound = "true";
-
-  const updateToggleState = () => {
-    const isVisible = input.type === "text";
-    button.setAttribute("aria-pressed", String(isVisible));
-    button.setAttribute(
-      "aria-label",
-      `${isVisible ? "Hide" : "Show"} ${label}`
-    );
-    button.setAttribute(
-      "title",
-      `${isVisible ? "Hide" : "Show"} ${label}`
-    );
-
-    button.innerHTML = isVisible
-      ? `
-<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-  <path d="M3 3l18 18"></path>
-  <path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6 0 9.5 6 9.5 6a16.7 16.7 0 0 1-3.2 3.9"></path>
-  <path d="M6.1 6.9C3.7 8.6 2.5 12 2.5 12S6 18 12 18a9.8 9.8 0 0 0 4-.8"></path>
-  <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
-</svg>`
-      : `
-<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-  <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
-  <circle cx="12" cy="12" r="2.5"></circle>
-</svg>`;
-  };
-
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const isPassword = input.type === "password";
-    input.type = isPassword ? "text" : "password";
-    updateToggleState();
-  });
-
-  updateToggleState();
-}
-
-function initializePasswordToggles() {
-  setupPasswordToggle("toggleLoginPassword", "loginPassword", "password");
-  setupPasswordToggle("toggleNewPassword", "newPassword", "new password");
-  setupPasswordToggle("toggleConfirmPassword", "confirmPassword", "confirm password");
-  setupPasswordToggle("toggleResetNewPassword", "resetNewPassword", "new password");
-  setupPasswordToggle("toggleResetConfirmPassword", "resetConfirmPassword", "confirm password");
-}
-
-initializePasswordToggles();
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initializePasswordToggles, { once: true });
-}
-
-
+let pendingRememberMe = getRememberPreference();
 
 function setAuthenticatedUi(isAuthenticated) {
   loginScreenEl?.classList.toggle("hidden", isAuthenticated);
@@ -100,15 +56,14 @@ function setAuthenticatedUi(isAuthenticated) {
   appShellEl?.classList.toggle("hidden", !isAuthenticated);
 }
 
-function showPasswordChangeUi(token, user) {
+function showPasswordChangeUi(token, user, rememberMe = false) {
   passwordChangeToken = String(token || "");
+  pendingRememberMe = Boolean(rememberMe);
   authenticatedUser = user || null;
   loginScreenEl?.classList.add("hidden");
   appShellEl?.classList.add("hidden");
 
   if (!passwordChangeScreenEl) {
-    // Safety fallback: never leave a first-time user on a blank screen if
-    // the password setup markup is missing from a stale frontend build.
     setLoginMessage("First-time login requires password setup. Please refresh the page and try again.");
     loginScreenEl?.classList.remove("hidden");
     return;
@@ -139,16 +94,38 @@ function clearStoredAuth() {
   passwordChangeToken = "";
   resetPasswordToken = "";
   localStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
 }
 
 function saveAuth(result) {
   authToken = String(result?.token || "");
   authenticatedUser = result?.user || null;
-  if (authToken) localStorage.setItem(AUTH_TOKEN_KEY, authToken);
+  const rememberMe = Boolean(result?.rememberMe ?? pendingRememberMe);
+
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
+
+  if (authToken) {
+    if (rememberMe) {
+      localStorage.setItem(AUTH_TOKEN_KEY, authToken);
+      localStorage.setItem(REMEMBER_ME_KEY, "1");
+    } else {
+      sessionStorage.setItem(AUTH_TOKEN_KEY, authToken);
+      localStorage.removeItem(REMEMBER_ME_KEY);
+    }
+  }
+
   if (authenticatedUser) {
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authenticatedUser));
   }
+
+  if (rememberMe && loginEmployeeNoEl?.value?.trim()) {
+    localStorage.setItem(REMEMBERED_EMPLOYEE_KEY, loginEmployeeNoEl.value.trim());
+  }
+
+  pendingRememberMe = rememberMe;
+  if (rememberMeEl) rememberMeEl.checked = rememberMe;
 }
 
 function restoreCachedUser() {
@@ -158,6 +135,13 @@ function restoreCachedUser() {
   } catch {
     authenticatedUser = null;
   }
+
+  const rememberedEmployee = localStorage.getItem(REMEMBERED_EMPLOYEE_KEY) || "";
+  if (loginEmployeeNoEl && rememberedEmployee) {
+    loginEmployeeNoEl.value = rememberedEmployee;
+  }
+
+  if (rememberMeEl) rememberMeEl.checked = getRememberPreference();
 }
 
 function setResetPasswordMessage(message = "", isError = true) {
@@ -208,11 +192,11 @@ async function resetLocalPassword(employeeNo, newPassword) {
   return payload;
 }
 
-async function authenticate(employeeNo, password) {
+async function authenticate(employeeNo, password, rememberMe) {
   const response = await fetch(`${API_BASE_URL}/auth/standalone/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ employeeNo, password }),
+    body: JSON.stringify({ employeeNo, password, rememberMe: Boolean(rememberMe) }),
   });
 
   let payload = null;
@@ -222,9 +206,7 @@ async function authenticate(employeeNo, password) {
     throw new Error(payload?.message || `Login failed (${response.status}).`);
   }
 
-  if (payload?.requiresPasswordChange) {
-    return payload;
-  }
+  if (payload?.requiresPasswordChange) return payload;
 
   if (!payload?.token) {
     throw new Error("Login succeeded but no session token was returned.");
@@ -238,24 +220,40 @@ async function validateExistingSession() {
   if (!authToken) return false;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/standalone/me`, {
+    let response = await fetch(`${API_BASE_URL}/auth/standalone/me`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
 
-    if (!response.ok) {
-      clearStoredAuth();
-      return false;
+    if (response.ok) {
+      const payload = await response.json();
+      authenticatedUser = payload?.user || authenticatedUser;
+      if (authenticatedUser) {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authenticatedUser));
+      }
+      return true;
     }
 
-    const payload = await response.json();
-    authenticatedUser = payload?.user || authenticatedUser;
-    if (authenticatedUser) {
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authenticatedUser));
+    // Remember Me survives a Render restart. The server's in-memory session
+    // does not, so restore the persistent token from Neon.
+    if (localStorage.getItem(AUTH_TOKEN_KEY) === authToken) {
+      response = await fetch(`${API_BASE_URL}/auth/standalone/remember`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      if (response.ok) {
+        const payload = await response.json();
+        authenticatedUser = payload?.user || authenticatedUser;
+        if (authenticatedUser) {
+          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authenticatedUser));
+        }
+        return true;
+      }
     }
-    return true;
+
+    clearStoredAuth();
+    return false;
   } catch {
-    // Keep the cached token if the backend is temporarily unavailable.
-    // The first authenticated dashboard request will surface the connection issue.
     return true;
   }
 }
@@ -275,6 +273,7 @@ async function handleLogout() {
     setAuthenticatedUi(false);
     setLoginMessage("");
     loginFormEl?.reset();
+    if (rememberMeEl) rememberMeEl.checked = getRememberPreference();
     loginEmployeeNoEl?.focus();
   }
 }
@@ -298,23 +297,34 @@ loginFormEl?.addEventListener("submit", async (event) => {
 
   const employeeNo = loginEmployeeNoEl.value.trim();
   const password = loginPasswordEl.value;
+  const rememberMe = Boolean(rememberMeEl?.checked);
 
   if (!employeeNo || !password) {
     setLoginMessage("Please enter your Employee No. and password.");
     return;
   }
 
+  pendingRememberMe = rememberMe;
+  if (rememberMe) {
+    localStorage.setItem(REMEMBER_ME_KEY, "1");
+    localStorage.setItem(REMEMBERED_EMPLOYEE_KEY, employeeNo);
+  } else {
+    localStorage.removeItem(REMEMBER_ME_KEY);
+    localStorage.removeItem(REMEMBERED_EMPLOYEE_KEY);
+  }
+
   loginButtonEl.disabled = true;
   setLoginMessage("Signing in...", false);
 
   try {
-    const result = await authenticate(employeeNo, password);
+    const result = await authenticate(employeeNo, password, rememberMe);
     loginPasswordEl.value = "";
 
     if (result?.requiresPasswordChange) {
       showPasswordChangeUi(
         result.passwordChangeToken,
-        result.user
+        result.user,
+        Boolean(result.rememberMe)
       );
       return;
     }
@@ -324,6 +334,7 @@ loginFormEl?.addEventListener("submit", async (event) => {
     loadDashboard();
   } catch (error) {
     clearStoredAuth();
+    if (rememberMeEl) rememberMeEl.checked = rememberMe;
     setLoginMessage(error.message || "Unable to sign in.");
   } finally {
     loginButtonEl.disabled = false;
@@ -368,7 +379,6 @@ resetPasswordFormEl?.addEventListener("submit", async (event) => {
 
   try {
     const result = await resetLocalPassword(employeeNo, newPassword);
-
     saveAuth(result);
     resetPasswordToken = "";
     resetPasswordFormEl?.reset();
@@ -391,6 +401,13 @@ passwordChangeFormEl?.addEventListener("submit", async (event) => {
 
   if (newPassword.length < 8) {
     setPasswordChangeMessage("Password must be at least 8 characters.");
+    return;
+  }
+
+  if (newPassword === "EKSBASELOGIN") {
+    setPasswordChangeMessage(
+      "New password cannot remain EKSBASELOGIN. Please choose a different password."
+    );
     return;
   }
 
@@ -442,7 +459,6 @@ passwordChangeFormEl?.addEventListener("submit", async (event) => {
 });
 
 logoutButtonEl?.addEventListener("click", handleLogout);
-
 
 const AREA_LEVELS = [
   "district",

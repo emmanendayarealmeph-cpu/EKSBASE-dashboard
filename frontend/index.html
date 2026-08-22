@@ -52,6 +52,23 @@
       stroke-linecap: round;
       stroke-linejoin: round;
     }
+    .remember-me {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 2px 0 4px;
+      font-size: 13px;
+      color: #555;
+      cursor: pointer;
+      user-select: none;
+    }
+    .remember-me input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: #f5c400;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -80,6 +97,11 @@
 </svg>
 </button></div>
         </div>
+
+        <label class="remember-me" for="rememberMe">
+          <input id="rememberMe" type="checkbox" />
+          <span>Remember Me</span>
+        </label>
 
         <div id="loginMessage" class="login-message" role="alert"></div>
         <button id="loginButton" class="login-button" type="submit">Sign In</button>
@@ -369,6 +391,6 @@
     </div>
   </div>
 
-  <script src="./js/app.js?v=20260822-090000"></script>
+  <script src="./js/app.js?v=20260822-neon-auth"></script>
 </body>
 </html>
