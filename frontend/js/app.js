@@ -49,6 +49,45 @@ let passwordChangeToken = "";
 let resetPasswordToken = "";
 let pendingRememberMe = getRememberPreference();
 
+
+// Password visibility toggles. Keep this isolated from authentication logic.
+function setupPasswordToggle(buttonId, inputId, label) {
+  const button = document.getElementById(buttonId);
+  const input = document.getElementById(inputId);
+  if (!button || !input) return;
+
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const isPassword = input.type === "password";
+    input.type = isPassword ? "text" : "password";
+    button.setAttribute("aria-pressed", String(isPassword));
+    button.setAttribute("aria-label", `${isPassword ? "Hide" : "Show"} ${label}`);
+    button.setAttribute("title", `${isPassword ? "Hide" : "Show"} ${label}`);
+
+    button.innerHTML = isPassword ? `
+<svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M3 3l18 18"></path>
+  <path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6 0 9.5 6 9.5 6a16.7 16.7 0 0 1-3.2 3.9"></path>
+  <path d="M6.1 6.9C3.7 8.6 2.5 12 2.5 12S6 18 12 18a9.8 9.8 0 0 0 4-.8"></path>
+  <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
+</svg>
+` : `
+<svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+  <circle cx="12" cy="12" r="2.5"></circle>
+</svg>
+`;
+  });
+}
+
+setupPasswordToggle("toggleLoginPassword", "loginPassword", "password");
+setupPasswordToggle("toggleNewPassword", "newPassword", "new password");
+setupPasswordToggle("toggleConfirmPassword", "confirmPassword", "confirm password");
+setupPasswordToggle("toggleResetNewPassword", "resetNewPassword", "new password");
+setupPasswordToggle("toggleResetConfirmPassword", "resetConfirmPassword", "confirm password");
+
 function setAuthenticatedUi(isAuthenticated) {
   loginScreenEl?.classList.toggle("hidden", isAuthenticated);
   passwordChangeScreenEl?.classList.add("hidden");
