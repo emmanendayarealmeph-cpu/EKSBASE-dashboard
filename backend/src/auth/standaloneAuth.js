@@ -71,7 +71,10 @@ async function refreshEmployeeAccessFromKingdee(employeeNo) {
     isActive: true,
   });
 
-  return getEmployeeAccess(normalizedEmployeeNo);
+  return {
+    ...getEmployeeAccess(normalizedEmployeeNo),
+    employeeName: clean(kingdeeEmployee.employeeName),
+  };
 }
 
 function createPasswordChangeToken(employeeNo) {
@@ -99,12 +102,13 @@ function getPasswordChangeSession(token) {
   return record;
 }
 
-function createSessionToken(employeeNo) {
+function createSessionToken(employeeNo, employeeName = "") {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_TTL_MS;
 
   sessions.set(token, {
     employeeNo: clean(employeeNo),
+    employeeName: clean(employeeName),
     createdAt: Date.now(),
     expiresAt,
   });
@@ -113,7 +117,10 @@ function createSessionToken(employeeNo) {
 }
 
 async function createSessionForEmployee(employee, employeeNo) {
-  const { token, expiresAt } = createSessionToken(employeeNo);
+  const { token, expiresAt } = createSessionToken(
+    employeeNo,
+    employee?.employeeName
+  );
 
   return {
     token,
@@ -293,7 +300,12 @@ export function getStandaloneUser(token) {
     return null;
   }
 
-  return employee;
+  return {
+    ...employee,
+    employeeName: clean(
+      session.employeeName || employee.employeeName || ""
+    ),
+  };
 }
 
 // Standalone authentication no longer supports persistent Remember Me sessions.
