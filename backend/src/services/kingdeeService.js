@@ -2940,12 +2940,6 @@ async getSerialData({
   const totalStart =
     performance.now();
 
-  if (!fromDate) {
-    throw new Error(
-      "fromDate is required for serial-data queries."
-    );
-  }
-
   const startRow =
     (page - 1) * limit;
 
@@ -2953,8 +2947,7 @@ async getSerialData({
     limit + 1;
 
   const filters = [
-  "FOrgId.FNumber = '110'",
-  "FStockStatus = '3'",
+    "FOrgId.FNumber = '110'",
   ];
 
   if (fromDate) {
@@ -3014,6 +3007,15 @@ async getSerialData({
 
   const filteredRows =
     mappedRows.filter((record) => {
+      // Sell-out eligibility is based on the Stock Status value,
+      // not the underlying Kingdee Stock Status code.
+      if (
+        String(record.stockStatus || "").trim() !==
+        "Warehouse Delivery"
+      ) {
+        return false;
+      }
+
       if (!fromDate) {
         return true;
       }
@@ -3029,9 +3031,11 @@ async getSerialData({
       );
     });
 
+  // Pagination is based on the Kingdee source rows because the
+  // Stock Status filter is intentionally applied by the returned
+  // Stock Status value rather than the Stock Status code.
   const hasMore =
-    rows.length > limit &&
-    filteredRows.length >= limit;
+    rows.length > limit;
 
   const pageRows =
     filteredRows.slice(
@@ -3150,7 +3154,7 @@ async getOnHandSerialData({
   // IMPORTANT:
   // On-hand serial records must not be written into serial_main_file.
   // serial_main_file is the historical Serial Main File / Sell-out source.
-  // Saving FStockStatus = '1' here can overwrite an existing
+  // Saving an On-hand record here can overwrite an existing
   // FStockStatus = '3' Warehouse Delivery record that shares the same
   // serial_number + organization_code primary key.
   //
@@ -3271,6 +3275,17 @@ async syncAllOnHandSerialData({
   limit = 100,
   syncType = "serial-sync-all",
 } = {}) {
+  if (serialSyncRunning) {
+    return {
+      skipped: true,
+      reason: "Serial sync is already running.",
+      startedAt: serialSyncStartedAt,
+    };
+  }
+
+  serialSyncRunning = true;
+  serialSyncStartedAt = new Date().toISOString();
+
   const parsedLimit = Math.min(
     Math.max(
       Number.parseInt(limit, 10) || 100,
@@ -3352,6 +3367,11 @@ async syncAllOnHandSerialData({
     const syncResult = {
       totalFetched,
       totalSaved,
+      totalUnchanged:
+        Math.max(
+          seenKeys.size - totalSaved,
+          0
+        ),
       uniqueRecords:
         seenKeys.size,
       duplicateCount:
@@ -3380,27 +3400,25 @@ async syncAllOnHandSerialData({
     );
 
     throw error;
+  } finally {
+    serialSyncRunning = false;
+    serialSyncStartedAt = null;
   }
+},
+async syncWarehouseDeliverySerialData({
+  limit = 500,
+} = {}) {
+  return await this.syncAllSerialData({
+    fromDate: "",
+    toDate: "",
+    limit,
+    syncType: "serial-sync-warehouse-delivery",
+  });
 },
 async syncRecentSerialData({
   days = 1,
   limit = 100,
 } = {}) {
-  if (serialSyncRunning) {
-    return {
-      skipped: true,
-      reason:
-        "Serial sync is already running.",
-      startedAt:
-        serialSyncStartedAt,
-    };
-  }
-
-  serialSyncRunning = true;
-  serialSyncStartedAt =
-    new Date().toISOString();
-
-  try {
     const parsedDays = Math.max(
       Number.parseInt(days, 10) || 1,
       1
@@ -3433,19 +3451,16 @@ async syncRecentSerialData({
     const fromDate =
       formatLocalDate(from);
 
-    return await this.syncAllSerialData({
-      fromDate,
-      toDate: "",
-      limit,
-      syncType:
-        "serial-sync-recent",
-    });
-  } finally {
-    serialSyncRunning = false;
-    serialSyncStartedAt = null;
-  }
-},
-async getSerialDataFromLocal({
+          return await this.syncAllSerialData({
+        fromDate,
+        toDate,
+        limit,
+        syncType:
+          "serial-sync-recent",
+      });
+  },
+
+  async getSerialDataFromLocal({
   fromDate = "",
   toDate = "",
   organizationCode = "",

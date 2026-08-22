@@ -3,9 +3,8 @@ import { kingdeeService } from "../services/kingdeeService.js";
 let intervalHandle = null;
 
 export function startSerialSyncJob({
-  intervalMinutes = 30,
-  days = 1,
-  limit = 100,
+  intervalMinutes = 15,
+  limit = 500,
 } = {}) {
   const parsedIntervalMinutes = Math.max(
     Number.parseInt(intervalMinutes, 10) || 30,
@@ -31,12 +30,11 @@ export function startSerialSyncJob({
       }
 
       console.log(
-        "[SYNC JOB] Starting automatic recent serial sync..."
-      );
+      "[SYNC JOB] Starting automatic Warehouse Delivery serial sync..."
+);
 
       const result =
-        await kingdeeService.syncRecentSerialData({
-          days,
+        await kingdeeService.syncWarehouseDeliverySerialData({
           limit,
         });
 
@@ -70,8 +68,12 @@ export function startSerialSyncJob({
     );
 
   console.log(
-    `[SYNC JOB] Serial sync scheduled every ${parsedIntervalMinutes} minute(s).`
+    `[SYNC JOB] Serial sync scheduled every ${parsedIntervalMinutes} minute(s) | Org 110 | Stock Status Warehouse Delivery`
   );
+
+  // Run once at startup so a fresh Render instance does not wait 15 minutes
+  // before the local sell-out dataset is populated/refreshed.
+  void runSync();
 
   return {
     intervalMinutes:

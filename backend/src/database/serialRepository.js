@@ -280,7 +280,49 @@ const upsertSerialStatement =
         excluded.month_of_incentive,
 
       incentive_status =
-        excluded.incentive_status
+        excluded.incentive_status,
+
+      stock_status_code =
+        excluded.stock_status_code
+
+    WHERE
+      material_code IS NOT excluded.material_code OR
+      material_name IS NOT excluded.material_name OR
+      material_group IS NOT excluded.material_group OR
+      model IS NOT excluded.model OR
+      color IS NOT excluded.color OR
+      category IS NOT excluded.category OR
+      brand IS NOT excluded.brand OR
+      sales_amount IS NOT excluded.sales_amount OR
+      organization_name IS NOT excluded.organization_name OR
+      stock_status_code IS NOT excluded.stock_status_code OR
+      stock_status IS NOT excluded.stock_status OR
+      supplier IS NOT excluded.supplier OR
+      production_dept IS NOT excluded.production_dept OR
+      warehouse_code IS NOT excluded.warehouse_code OR
+      warehouse IS NOT excluded.warehouse OR
+      mall_name IS NOT excluded.mall_name OR
+      store_type IS NOT excluded.store_type OR
+      district IS NOT excluded.district OR
+      region IS NOT excluded.region OR
+      sub_region IS NOT excluded.sub_region OR
+      customer_code IS NOT excluded.customer_code OR
+      customer IS NOT excluded.customer OR
+      customer_short_name IS NOT excluded.customer_short_name OR
+      customer_region IS NOT excluded.customer_region OR
+      customer_district IS NOT excluded.customer_district OR
+      customer_group IS NOT excluded.customer_group OR
+      sales_time IS NOT excluded.sales_time OR
+      resign_time IS NOT excluded.resign_time OR
+      sales_no IS NOT excluded.sales_no OR
+      sales IS NOT excluded.sales OR
+      role IS NOT excluded.role OR
+      hired_date IS NOT excluded.hired_date OR
+      sales_lwd IS NOT excluded.sales_lwd OR
+      sales_workday IS NOT excluded.sales_workday OR
+      type_of_seller IS NOT excluded.type_of_seller OR
+      month_of_incentive IS NOT excluded.month_of_incentive OR
+      incentive_status IS NOT excluded.incentive_status
   `);
 
 /**
@@ -289,7 +331,8 @@ const upsertSerialStatement =
 function runUpsert(record) {
   validateSerialRecord(record);
 
-  upsertSerialStatement.run(
+  const result =
+    upsertSerialStatement.run(
     normalizeText(
       record.serialNumber
     ),
@@ -445,6 +488,8 @@ function runUpsert(record) {
       record.incentiveStatus
     )
   );
+
+  return Number(result?.changes) || 0;
 }
 
 /**

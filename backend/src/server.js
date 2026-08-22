@@ -15,8 +15,7 @@ app.listen(config.port, () => {
   );
 
   startSerialSyncJob({
-    intervalMinutes: 30,
-    days: 1,
-    limit: 100,
+    intervalMinutes: 15,
+    limit: 500,
   });
 });
