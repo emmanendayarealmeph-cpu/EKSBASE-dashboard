@@ -178,6 +178,7 @@ const departmentFields = [
 
 const employeeFields = [
   "FStaffNumber",
+  "FName",
   "F_RTA_Department",
   "F_RTA_Department.FName",
   "F_RTA_Role",
@@ -1254,6 +1255,9 @@ function mapEmployeeRow(row) {
   return {
     salesNo:
       getValue("FStaffNumber"),
+
+    employeeName:
+      getValue("FName"),
 
     departmentId:
       getValue("F_RTA_Department"),

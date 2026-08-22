@@ -13,12 +13,6 @@ import {
   markPasswordChanged,
   markLocalCredentialLogin,
 } from "./localCredentials.js";
-import {
-  forgetLogin,
-  rememberLogin,
-  restoreRememberedLogin,
-} from "./rememberedLogins.js";
-
 const sessions = new Map();
 const passwordChangeTokens = new Map();
 
@@ -80,11 +74,10 @@ async function refreshEmployeeAccessFromKingdee(employeeNo) {
   return getEmployeeAccess(normalizedEmployeeNo);
 }
 
-function createPasswordChangeToken(employeeNo, rememberMe = false) {
+function createPasswordChangeToken(employeeNo) {
   const token = crypto.randomBytes(32).toString("hex");
   passwordChangeTokens.set(token, {
     employeeNo: clean(employeeNo),
-    rememberMe: Boolean(rememberMe),
     createdAt: Date.now(),
     expiresAt: Date.now() + PASSWORD_CHANGE_TOKEN_TTL_MS,
   });
@@ -106,7 +99,7 @@ function getPasswordChangeSession(token) {
   return record;
 }
 
-function createSessionToken(employeeNo, rememberMe) {
+function createSessionToken(employeeNo) {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_TTL_MS;
 
@@ -114,26 +107,13 @@ function createSessionToken(employeeNo, rememberMe) {
     employeeNo: clean(employeeNo),
     createdAt: Date.now(),
     expiresAt,
-    rememberMe: Boolean(rememberMe),
   });
 
   return { token, expiresAt };
 }
 
-async function createSessionForEmployee(employee, employeeNo, rememberMe) {
-  const { token, expiresAt } = createSessionToken(employeeNo, rememberMe);
-
-  if (rememberMe) {
-    const remembered = await rememberLogin(token, employeeNo, expiresAt);
-    if (!remembered) {
-      sessions.delete(token);
-      const error = new Error(
-        "Remember Me could not be enabled because persistent authentication is not configured."
-      );
-      error.statusCode = 503;
-      throw error;
-    }
-  }
+async function createSessionForEmployee(employee, employeeNo) {
+  const { token, expiresAt } = createSessionToken(employeeNo);
 
   return {
     token,
@@ -141,7 +121,6 @@ async function createSessionForEmployee(employee, employeeNo, rememberMe) {
     employee,
     requiresPasswordChange: false,
     passwordChangeToken: "",
-    rememberMe: Boolean(rememberMe),
   };
 }
 
@@ -192,18 +171,11 @@ export async function changeStandalonePassword(passwordChangeToken, newPassword)
 
   passwordChangeTokens.delete(passwordChangeToken);
 
-  return createStandaloneSession(normalizedEmployeeNo, password, {
-    rememberMe: pending.rememberMe,
-  });
+  return createStandaloneSession(normalizedEmployeeNo, password);
 }
 
-export async function createStandaloneSession(
-  employeeNo,
-  password,
-  options = {}
-) {
+export async function createStandaloneSession(employeeNo, password) {
   const normalizedEmployeeNo = clean(employeeNo);
-  const rememberMe = Boolean(options?.rememberMe);
 
   if (!normalizedEmployeeNo) {
     const error = new Error("employeeNo is required.");
@@ -258,8 +230,7 @@ export async function createStandaloneSession(
     );
 
     const passwordChangeToken = createPasswordChangeToken(
-      normalizedEmployeeNo,
-      rememberMe
+      normalizedEmployeeNo
     );
 
     return {
@@ -268,7 +239,6 @@ export async function createStandaloneSession(
       employee,
       requiresPasswordChange: true,
       passwordChangeToken,
-      rememberMe,
     };
   }
 
@@ -280,8 +250,7 @@ export async function createStandaloneSession(
     }
 
     const passwordChangeToken = createPasswordChangeToken(
-      normalizedEmployeeNo,
-      rememberMe
+      normalizedEmployeeNo
     );
 
     return {
@@ -290,7 +259,6 @@ export async function createStandaloneSession(
       employee,
       requiresPasswordChange: true,
       passwordChangeToken,
-      rememberMe,
     };
   }
 
@@ -303,8 +271,7 @@ export async function createStandaloneSession(
   await markLocalCredentialLogin(normalizedEmployeeNo);
   return createSessionForEmployee(
     employee,
-    normalizedEmployeeNo,
-    rememberMe
+    normalizedEmployeeNo
   );
 }
 
@@ -329,48 +296,17 @@ export function getStandaloneUser(token) {
   return employee;
 }
 
-export async function restoreRememberedSession(token) {
-  const normalizedToken = clean(token);
-  if (!normalizedToken) return null;
-
-  const existing = getStandaloneUser(normalizedToken);
-  if (existing) return existing;
-
-  const remembered = await restoreRememberedLogin(normalizedToken);
-  if (!remembered) return null;
-
-  const credentialState = await getLocalCredentialState(remembered.employeeNo);
-  if (!credentialState || !Boolean(credentialState.is_active)) {
-    await forgetLogin(normalizedToken);
-    return null;
-  }
-
-  const employee = await refreshEmployeeAccessFromKingdee(
-    remembered.employeeNo
-  );
-
-  if (!employee || Number(employee.isActive) !== 1) {
-    await forgetLogin(normalizedToken);
-    return null;
-  }
-
-  sessions.set(normalizedToken, {
-    employeeNo: remembered.employeeNo,
-    createdAt: Date.now(),
-    expiresAt: remembered.expiresAt,
-    rememberMe: true,
-  });
-
-  return employee;
+// Standalone authentication no longer supports persistent Remember Me sessions.
+// Keep this export as a compatibility shim for any existing route imports.
+export async function restoreRememberedSession() {
+  return null;
 }
 
 export async function destroyStandaloneSession(token) {
   const normalizedToken = clean(token);
   if (!normalizedToken) return false;
 
-  const removed = sessions.delete(normalizedToken);
-  await forgetLogin(normalizedToken);
-  return removed;
+  return sessions.delete(normalizedToken);
 }
 
 export function clearExpiredStandaloneSessions() {

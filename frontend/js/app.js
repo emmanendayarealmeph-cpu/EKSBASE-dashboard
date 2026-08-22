@@ -1576,13 +1576,22 @@ function renderAuthorizationContext(response) {
   const accessLevel = String(auth.accessLevel || "").trim();
   const organizationCode = String(auth.organizationCode || "110").trim();
 
+  // Display the employee's actual Kingdee name first, then Employee No.
+  // Fall back to the Employee No. only if the name is not available yet.
+  const employeeName = String(
+    auth.employeeName ||
+    authenticatedUser?.employeeName ||
+    authenticatedUser?.name ||
+    employeeNo ||
+    "Employee"
+  ).trim();
+
   if (authenticated && employeeNo) {
     if (identityNameEl) {
-      identityNameEl.textContent = employeeNo;
+      identityNameEl.textContent = employeeName;
     }
     if (identityAccessEl) {
-      identityAccessEl.textContent =
-        [role, accessLevel].filter(Boolean).join(" · ") || "Authorized User";
+      identityAccessEl.textContent = employeeNo;
     }
   } else {
     if (identityNameEl) {
