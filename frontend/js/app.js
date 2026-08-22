@@ -10,15 +10,6 @@ const newPasswordEl = document.getElementById("newPassword");
 const confirmPasswordEl = document.getElementById("confirmPassword");
 const passwordChangeButtonEl = document.getElementById("passwordChangeButton");
 const passwordChangeMessageEl = document.getElementById("passwordChangeMessage");
-const resetPasswordScreenEl = document.getElementById("resetPasswordScreen");
-const resetPasswordFormEl = document.getElementById("resetPasswordForm");
-const resetEmployeeNoEl = document.getElementById("resetEmployeeNo");
-const resetNewPasswordEl = document.getElementById("resetNewPassword");
-const resetConfirmPasswordEl = document.getElementById("resetConfirmPassword");
-const resetPasswordButtonEl = document.getElementById("resetPasswordButton");
-const resetPasswordMessageEl = document.getElementById("resetPasswordMessage");
-const resetPasswordLinkEl = document.getElementById("resetPasswordLink");
-const backToLoginButtonEl = document.getElementById("backToLoginButton");
 const loginFormEl = document.getElementById("loginForm");
 const loginEmployeeNoEl = document.getElementById("loginEmployeeNo");
 const loginPasswordEl = document.getElementById("loginPassword");
@@ -36,7 +27,6 @@ function getStoredAuthToken() {
 let authToken = getStoredAuthToken();
 let authenticatedUser = null;
 let passwordChangeToken = "";
-let resetPasswordToken = "";
 
 
 // Password visibility toggles. Keep this isolated from authentication logic.
@@ -74,13 +64,10 @@ function setupPasswordToggle(buttonId, inputId, label) {
 setupPasswordToggle("toggleLoginPassword", "loginPassword", "password");
 setupPasswordToggle("toggleNewPassword", "newPassword", "new password");
 setupPasswordToggle("toggleConfirmPassword", "confirmPassword", "confirm password");
-setupPasswordToggle("toggleResetNewPassword", "resetNewPassword", "new password");
-setupPasswordToggle("toggleResetConfirmPassword", "resetConfirmPassword", "confirm password");
 
 function setAuthenticatedUi(isAuthenticated) {
   loginScreenEl?.classList.toggle("hidden", isAuthenticated);
   passwordChangeScreenEl?.classList.add("hidden");
-  resetPasswordScreenEl?.classList.add("hidden");
   appShellEl?.classList.toggle("hidden", !isAuthenticated);
 }
 
@@ -119,7 +106,6 @@ function clearStoredAuth() {
   authToken = "";
   authenticatedUser = null;
   passwordChangeToken = "";
-  resetPasswordToken = "";
   localStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
@@ -148,54 +134,6 @@ function restoreCachedUser() {
   } catch {
     authenticatedUser = null;
   }
-}
-
-function setResetPasswordMessage(message = "", isError = true) {
-  if (!resetPasswordMessageEl) return;
-  resetPasswordMessageEl.textContent = message;
-  resetPasswordMessageEl.classList.toggle("error", Boolean(message && isError));
-  resetPasswordMessageEl.classList.toggle("success", Boolean(message && !isError));
-}
-
-function showResetPasswordUi() {
-  loginScreenEl?.classList.add("hidden");
-  passwordChangeScreenEl?.classList.add("hidden");
-  appShellEl?.classList.add("hidden");
-  resetPasswordScreenEl?.classList.remove("hidden");
-  resetPasswordToken = "";
-  setResetPasswordMessage("Enter your Employee No. and set a new password.", false);
-  resetEmployeeNoEl?.focus();
-}
-
-function showLoginUi() {
-  resetPasswordToken = "";
-  resetPasswordScreenEl?.classList.add("hidden");
-  passwordChangeScreenEl?.classList.add("hidden");
-  appShellEl?.classList.add("hidden");
-  loginScreenEl?.classList.remove("hidden");
-  setResetPasswordMessage("");
-  loginEmployeeNoEl?.focus();
-}
-
-async function resetLocalPassword(employeeNo, newPassword) {
-  const response = await fetch(`${API_BASE_URL}/auth/standalone/reset-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ employeeNo, newPassword }),
-  });
-
-  let payload = null;
-  try { payload = await response.json(); } catch { payload = null; }
-
-  if (!response.ok) {
-    throw new Error(payload?.message || `Password reset failed (${response.status}).`);
-  }
-
-  if (!payload?.token) {
-    throw new Error("Password reset succeeded but no session token was returned.");
-  }
-
-  return payload;
 }
 
 async function authenticate(employeeNo, password) {
@@ -317,57 +255,15 @@ loginFormEl?.addEventListener("submit", async (event) => {
   }
 });
 
-resetPasswordLinkEl?.addEventListener("click", (event) => {
-  event.preventDefault();
-  showResetPasswordUi();
-});
-
-backToLoginButtonEl?.addEventListener("click", (event) => {
-  event.preventDefault();
-  resetPasswordFormEl?.reset();
-  showLoginUi();
-});
-
-resetPasswordFormEl?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  const employeeNo = resetEmployeeNoEl?.value.trim() || "";
-  const newPassword = resetNewPasswordEl?.value || "";
-  const confirmPassword = resetConfirmPasswordEl?.value || "";
-
-  if (!employeeNo) {
-    setResetPasswordMessage("Please enter your Employee No.");
-    return;
-  }
-
-  if (newPassword.length < 8) {
-    setResetPasswordMessage("Password must be at least 8 characters.");
-    return;
-  }
-
-  if (newPassword !== confirmPassword) {
-    setResetPasswordMessage("Passwords do not match.");
-    return;
-  }
-
-  resetPasswordButtonEl.disabled = true;
-  setResetPasswordMessage("Resetting your password...", false);
-
-  try {
-    const result = await resetLocalPassword(employeeNo, newPassword);
-    saveAuth(result);
-    resetPasswordToken = "";
-    resetPasswordFormEl?.reset();
-    setResetPasswordMessage("");
-    setAuthenticatedUi(true);
-    loadDashboard();
-  } catch (error) {
-    resetPasswordToken = "";
-    setResetPasswordMessage(error.message || "Unable to reset password.");
-  } finally {
-    resetPasswordButtonEl.disabled = false;
-  }
-});
+// Self-service password reset is intentionally disabled.
+// Employees who forget their password must contact an EKSBASE administrator.
+const disabledResetLinkEl = document.getElementById("resetPasswordLink");
+if (disabledResetLinkEl) {
+  disabledResetLinkEl.textContent = "Forgot your password? Contact an EKSBASE administrator.";
+  disabledResetLinkEl.disabled = true;
+  disabledResetLinkEl.setAttribute("aria-disabled", "true");
+  disabledResetLinkEl.classList.add("disabled");
+}
 
 passwordChangeFormEl?.addEventListener("submit", async (event) => {
   event.preventDefault();
