@@ -2019,6 +2019,66 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+async function syncSelectedSalesDateRange() {
+  const fromDate = String(
+    salesFromDateEl?.value || ""
+  ).trim();
+
+  const toDate = String(
+    salesToDateEl?.value || ""
+  ).trim();
+
+  if (!fromDate) {
+    throw new Error(
+      "Please select a Sales Date range before refreshing."
+    );
+  }
+
+  const params = new URLSearchParams({
+    fromDate,
+    toDate,
+    limit: "100",
+  });
+
+  setMessage("Synchronizing sell-out data from Kingdee...");
+
+  const result = await fetchJson(
+    `${API_BASE_URL}/kingdee/serial-data-sync-all?${params}`
+  );
+
+  console.log(
+    "[REFRESH] Kingdee sell-out sync complete:",
+    result
+  );
+
+  return result;
+}
+
+async function refreshDashboard() {
+  if (refreshButton.disabled) return;
+
+  refreshButton.disabled = true;
+  exportButton.disabled = true;
+  document.body.classList.add("dashboard-loading");
+
+  try {
+    await syncSelectedSalesDateRange();
+    await loadDashboard();
+  } catch (error) {
+    console.error(error);
+
+    setApiStatus(false);
+    setMessage(
+      error?.message ||
+        "Unable to synchronize sell-out data from Kingdee.",
+      true
+    );
+  } finally {
+    refreshButton.disabled = false;
+    document.body.classList.remove("dashboard-loading");
+  }
+}
+
 async function loadDashboard() {
   document.body.classList.add("dashboard-loading");
   exportButton.disabled = true;
@@ -2383,7 +2443,7 @@ applyButton.addEventListener("click", () => {
   loadDashboard();
 });
 
-refreshButton.addEventListener("click", loadDashboard);
+refreshButton.addEventListener("click", refreshDashboard);
 
 // Export must be registered before optional navigation controls so a missing
 // back button cannot stop the rest of the dashboard event wiring.
