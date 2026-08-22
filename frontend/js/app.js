@@ -266,7 +266,7 @@ loginFormEl?.addEventListener("submit", async (event) => {
 // Employees who forget their password must contact an EKSBASE administrator.
 const disabledResetLinkEl = document.getElementById("resetPasswordLink");
 if (disabledResetLinkEl) {
-  disabledResetLinkEl.textContent = "Forgot your password? Contact an EKSBASE administrator.";
+  disabledResetLinkEl.textContent = "Forgot your password? Please contact BOE.";
   disabledResetLinkEl.disabled = true;
   disabledResetLinkEl.setAttribute("aria-disabled", "true");
   disabledResetLinkEl.classList.add("disabled");
