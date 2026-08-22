@@ -1,17 +1,11 @@
-import crypto from "node:crypto";
 import express from "express";
 import {
   changeStandalonePassword,
   createStandaloneSession,
   destroyStandaloneSession,
   restoreRememberedSession,
+  resetEmployeePasswordByAdmin,
 } from "../auth/standaloneAuth.js";
-import {
-  setLocalCredentialPassword,
-  markPasswordChanged,
-  markLocalCredentialLogin,
-} from "../auth/localCredentials.js";
-import { db } from "../database/database.js";
 import { requireAuthenticatedUser } from "../auth/requireAuthenticatedUser.js";
 
 const router = express.Router();
@@ -57,11 +51,9 @@ function getPasswordResetSession(token) {
 
 router.post("/login", async (req, res) => {
   try {
-    const { employeeNo, password, rememberMe } = req.body || {};
+    const { employeeNo, password } = req.body || {};
 
-    const result = await createStandaloneSession(employeeNo, password, {
-      rememberMe: Boolean(rememberMe),
-    });
+    const result = await createStandaloneSession(employeeNo, password);
 
     return res.json({
       status: "ok",
@@ -136,132 +128,30 @@ router.post("/remember", async (req, res) => {
   }
 });
 
-/*
- * LOCAL DEVELOPMENT ONLY:
- * Existing users can reset their local EKSBASE password using the
- * configured local reset code. Production keeps this endpoint disabled.
- */
-router.post("/reset-password/request", async (req, res) => {
+router.post("/admin/reset-password", requireAuthenticatedUser, async (req, res) => {
   try {
-    if (process.env.NODE_ENV === "production") {
-      return res.status(404).json({
+    if (String(req.dashboardUser?.role || "").toUpperCase() !== "ADMIN") {
+      return res.status(403).json({
         status: "error",
-        message: "Password reset is disabled in production.",
+        message: "EKSBASE administrator access is required.",
       });
     }
 
     const employeeNo = clean(req.body?.employeeNo);
-    const resetCode = String(req.body?.resetCode ?? "");
-
-    if (!employeeNo || !resetCode) {
-      return res.status(400).json({
-        status: "error",
-        message: "Employee No. and reset code are required.",
-      });
-    }
-
-    if (resetCode !== LOCAL_PASSWORD_RESET_CODE) {
-      return res.status(401).json({
-        status: "error",
-        message: "Invalid local reset code.",
-      });
-    }
-
-    const employee = db
-      .prepare(`
-        SELECT employee_no, is_active
-        FROM employee_access
-        WHERE employee_no = ?
-      `)
-      .get(employeeNo);
-
-    if (!employee) {
-      return res.status(404).json({
-        status: "error",
-        message: "Employee was not found in local dashboard access.",
-      });
-    }
-
-    if (Number(employee.is_active) !== 1) {
-      return res.status(403).json({
-        status: "error",
-        message: "Employee dashboard access is inactive.",
-      });
-    }
+    const result = await resetEmployeePasswordByAdmin(employeeNo);
 
     return res.json({
       status: "ok",
       provider: "standalone",
-      passwordResetToken: createPasswordResetToken(employeeNo),
-      expiresAt: new Date(
-        Date.now() + PASSWORD_RESET_TOKEN_TTL_MS
-      ).toISOString(),
+      employeeNo: result.employee.employeeNo,
+      employeeName: result.employee.employeeName || "",
+      temporaryPassword: result.temporaryPassword,
+      requiresPasswordChange: true,
     });
   } catch (error) {
     return res.status(error.statusCode || 400).json({
       status: "error",
-      message: error.message || "Password reset request failed.",
-    });
-  }
-});
-
-router.post("/reset-password/complete", async (req, res) => {
-  try {
-    if (process.env.NODE_ENV === "production") {
-      return res.status(404).json({
-        status: "error",
-        message: "Password reset is disabled in production.",
-      });
-    }
-
-    const { passwordResetToken, newPassword } = req.body || {};
-    const pending = getPasswordResetSession(passwordResetToken);
-
-    if (!pending) {
-      return res.status(401).json({
-        status: "error",
-        message: "Password reset session is invalid or expired.",
-      });
-    }
-
-    const password = String(newPassword ?? "");
-
-    if (password.length < 8) {
-      return res.status(400).json({
-        status: "error",
-        message: "Password must be at least 8 characters.",
-      });
-    }
-
-    await setLocalCredentialPassword(pending.employeeNo, password, {
-      mustChangePassword: false,
-    });
-    await markPasswordChanged(pending.employeeNo);
-    await markLocalCredentialLogin(pending.employeeNo);
-    passwordResetTokens.delete(passwordResetToken);
-
-    const result = await createStandaloneSession(
-      pending.employeeNo,
-      password,
-      { rememberMe: false }
-    );
-
-    return res.json({
-      status: "ok",
-      provider: "standalone",
-      requiresPasswordChange: false,
-      passwordChangeToken: "",
-      token: result.token || "",
-      expiresAt: result.expiresAt
-        ? new Date(result.expiresAt).toISOString()
-        : "",
-      rememberMe: Boolean(result.rememberMe),
-      user: result.employee,
-    });
-  } catch (error) {
-    return res.status(error.statusCode || 400).json({
-      status: "error",
-      message: error.message || "Password reset failed.",
+      message: error.message || "Administrator password reset failed.",
     });
   }
 });

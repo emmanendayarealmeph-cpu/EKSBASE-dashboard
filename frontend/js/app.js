@@ -16,6 +16,11 @@ const loginPasswordEl = document.getElementById("loginPassword");
 const loginButtonEl = document.getElementById("loginButton");
 const loginMessageEl = document.getElementById("loginMessage");
 const logoutButtonEl = document.getElementById("logoutButton");
+const adminButtonEl = document.getElementById("adminButton");
+const adminResetModalEl = document.getElementById("adminResetModal");
+const adminResetEmployeeNoEl = document.getElementById("adminResetEmployeeNo");
+const adminResetButtonEl = document.getElementById("adminResetButton");
+const adminResetMessageEl = document.getElementById("adminResetMessage");
 
 function getStoredAuthToken() {
   // Standalone authentication is session-based. Ignore any legacy persistent
@@ -69,6 +74,8 @@ function setAuthenticatedUi(isAuthenticated) {
   loginScreenEl?.classList.toggle("hidden", isAuthenticated);
   passwordChangeScreenEl?.classList.add("hidden");
   appShellEl?.classList.toggle("hidden", !isAuthenticated);
+  const isAdmin = isAuthenticated && String(authenticatedUser?.role || "").toUpperCase() === "ADMIN";
+  adminButtonEl?.classList.toggle("hidden", !isAdmin);
 }
 
 function showPasswordChangeUi(token, user) {
@@ -264,6 +271,78 @@ if (disabledResetLinkEl) {
   disabledResetLinkEl.setAttribute("aria-disabled", "true");
   disabledResetLinkEl.classList.add("disabled");
 }
+
+function setAdminResetMessage(message = "", isError = true) {
+  if (!adminResetMessageEl) return;
+  adminResetMessageEl.textContent = message;
+  adminResetMessageEl.classList.toggle("error", Boolean(message && isError));
+  adminResetMessageEl.classList.toggle("success", Boolean(message && !isError));
+}
+
+function openAdminResetModal() {
+  if (!adminResetModalEl) return;
+  adminResetEmployeeNoEl.value = "";
+  setAdminResetMessage("Reset an employee password to EKSBASELOGIN.", false);
+  adminResetModalEl.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+  requestAnimationFrame(() => adminResetEmployeeNoEl?.focus());
+}
+
+function closeAdminResetModal() {
+  adminResetModalEl?.classList.add("hidden");
+  document.body.classList.remove("modal-open");
+  setAdminResetMessage("");
+}
+
+adminButtonEl?.addEventListener("click", openAdminResetModal);
+document.querySelectorAll("[data-close-admin-modal]").forEach((element) => {
+  element.addEventListener("click", closeAdminResetModal);
+});
+
+adminResetButtonEl?.addEventListener("click", async () => {
+  const employeeNo = adminResetEmployeeNoEl?.value.trim() || "";
+
+  if (!employeeNo) {
+    setAdminResetMessage("Please enter an Employee No.");
+    return;
+  }
+
+  if (!authToken || String(authenticatedUser?.role || "").toUpperCase() !== "ADMIN") {
+    setAdminResetMessage("Administrator authentication is required.");
+    return;
+  }
+
+  adminResetButtonEl.disabled = true;
+  setAdminResetMessage("Resetting employee password...", false);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/standalone/admin/reset-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ employeeNo }),
+    });
+
+    let payload = null;
+    try { payload = await response.json(); } catch { payload = null; }
+
+    if (!response.ok) {
+      throw new Error(payload?.message || `Password reset failed (${response.status}).`);
+    }
+
+    setAdminResetMessage(
+      `${payload.employeeName || payload.employeeNo} was reset successfully. Temporary password: EKSBASELOGIN. The employee must change it at next login.`,
+      false
+    );
+    adminResetEmployeeNoEl.value = "";
+  } catch (error) {
+    setAdminResetMessage(error.message || "Unable to reset employee password.");
+  } finally {
+    adminResetButtonEl.disabled = false;
+  }
+});
 
 passwordChangeFormEl?.addEventListener("submit", async (event) => {
   event.preventDefault();

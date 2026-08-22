@@ -12,6 +12,7 @@ import {
   getLocalCredentialState,
   markPasswordChanged,
   markLocalCredentialLogin,
+  resetLocalCredentialToDefault,
 } from "./localCredentials.js";
 const sessions = new Map();
 const passwordChangeTokens = new Map();
@@ -19,6 +20,8 @@ const passwordChangeTokens = new Map();
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const PASSWORD_CHANGE_TOKEN_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_FIRST_LOGIN_PASSWORD = "EKSBASELOGIN";
+const ADMIN_EMPLOYEE_NO = clean(process.env.EKSBASE_ADMIN_EMPLOYEE_NO);
+const ADMIN_PASSWORD = String(process.env.EKSBASE_ADMIN_PASSWORD ?? "");
 
 function clean(value) {
   return String(value ?? "").trim();
@@ -102,18 +105,54 @@ function getPasswordChangeSession(token) {
   return record;
 }
 
-function createSessionToken(employeeNo, employeeName = "") {
+function createSessionToken(employeeNo, employeeName = "", options = {}) {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_TTL_MS;
 
   sessions.set(token, {
     employeeNo: clean(employeeNo),
     employeeName: clean(employeeName),
+    isAdmin: options?.isAdmin === true,
     createdAt: Date.now(),
     expiresAt,
   });
 
   return { token, expiresAt };
+}
+
+function isConfiguredAdminCredential(employeeNo, password) {
+  return Boolean(
+    ADMIN_EMPLOYEE_NO &&
+    ADMIN_PASSWORD &&
+    clean(employeeNo) === ADMIN_EMPLOYEE_NO &&
+    String(password ?? "") === ADMIN_PASSWORD
+  );
+}
+
+function createAdminSession() {
+  return createSessionToken(
+    ADMIN_EMPLOYEE_NO,
+    "EKSBASE Administrator",
+    { isAdmin: true }
+  );
+}
+
+function buildAdminUser() {
+  return {
+    employeeNo: ADMIN_EMPLOYEE_NO,
+    employeeName: "EKSBASE Administrator",
+    role: "ADMIN",
+    department: "ADMIN",
+    accessLevel: "ADMIN",
+    district: "",
+    region: "",
+    subRegion: "",
+    warehouseCode: "",
+    salesNo: "",
+    isActive: 1,
+    organizationCode: "110",
+    isAdmin: true,
+  };
 }
 
 async function createSessionForEmployee(employee, employeeNo) {
@@ -181,8 +220,59 @@ export async function changeStandalonePassword(passwordChangeToken, newPassword)
   return createStandaloneSession(normalizedEmployeeNo, password);
 }
 
+export async function resetEmployeePasswordByAdmin(employeeNo) {
+  const normalizedEmployeeNo = clean(employeeNo);
+
+  if (!normalizedEmployeeNo) {
+    const error = new Error("Employee No. is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (ADMIN_EMPLOYEE_NO && normalizedEmployeeNo === ADMIN_EMPLOYEE_NO) {
+    const error = new Error("The EKSBASE administrator account cannot be reset here.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const employee = await refreshEmployeeAccessFromKingdee(normalizedEmployeeNo);
+  if (!employee) {
+    const error = new Error("Employee was not found in Kingdee Employee Master and is not configured for dashboard access.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (Number(employee.isActive) !== 1) {
+    const error = new Error("Employee dashboard access is inactive.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  await resetLocalCredentialToDefault(
+    normalizedEmployeeNo,
+    DEFAULT_FIRST_LOGIN_PASSWORD
+  );
+
+  return {
+    employee,
+    temporaryPassword: DEFAULT_FIRST_LOGIN_PASSWORD,
+    requiresPasswordChange: true,
+  };
+}
+
 export async function createStandaloneSession(employeeNo, password) {
   const normalizedEmployeeNo = clean(employeeNo);
+
+  if (isConfiguredAdminCredential(normalizedEmployeeNo, password)) {
+    const { token, expiresAt } = createAdminSession();
+    return {
+      token,
+      expiresAt,
+      employee: buildAdminUser(),
+      requiresPasswordChange: false,
+      passwordChangeToken: "",
+    };
+  }
 
   if (!normalizedEmployeeNo) {
     const error = new Error("employeeNo is required.");
@@ -292,6 +382,14 @@ export function getStandaloneUser(token) {
   if (Date.now() >= session.expiresAt) {
     sessions.delete(normalizedToken);
     return null;
+  }
+
+  if (session.isAdmin) {
+    if (!ADMIN_EMPLOYEE_NO || session.employeeNo !== ADMIN_EMPLOYEE_NO) {
+      sessions.delete(normalizedToken);
+      return null;
+    }
+    return buildAdminUser();
   }
 
   const employee = getEmployeeAccess(session.employeeNo);

@@ -345,6 +345,23 @@ export async function markLocalCredentialLogin(employeeNo) {
   );
 }
 
+
+export async function resetLocalCredentialToDefault(employeeNo, defaultPassword) {
+  const normalizedEmployeeNo = clean(employeeNo);
+  if (!normalizedEmployeeNo) {
+    throw new Error("employeeNo is required.");
+  }
+
+  const password = String(defaultPassword ?? "");
+  if (!password) {
+    throw new Error("defaultPassword is required.");
+  }
+
+  await setLocalCredentialPassword(normalizedEmployeeNo, password, {
+    mustChangePassword: true,
+  });
+}
+
 export async function disableLocalCredential(employeeNo) {
   const normalizedEmployeeNo = clean(employeeNo);
   if (!normalizedEmployeeNo) return;
