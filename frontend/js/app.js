@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://eksbase-dashboard.onrender.com";
+const API_BASE_URL = "http://localhost:3000";
 const AUTH_TOKEN_KEY = "eksbase.auth.token";
 const AUTH_USER_KEY = "eksbase.auth.user";
 
@@ -10,15 +10,6 @@ const newPasswordEl = document.getElementById("newPassword");
 const confirmPasswordEl = document.getElementById("confirmPassword");
 const passwordChangeButtonEl = document.getElementById("passwordChangeButton");
 const passwordChangeMessageEl = document.getElementById("passwordChangeMessage");
-const resetPasswordScreenEl = document.getElementById("resetPasswordScreen");
-const resetPasswordFormEl = document.getElementById("resetPasswordForm");
-const resetEmployeeNoEl = document.getElementById("resetEmployeeNo");
-const resetNewPasswordEl = document.getElementById("resetNewPassword");
-const resetConfirmPasswordEl = document.getElementById("resetConfirmPassword");
-const resetPasswordButtonEl = document.getElementById("resetPasswordButton");
-const resetPasswordMessageEl = document.getElementById("resetPasswordMessage");
-const resetPasswordLinkEl = document.getElementById("resetPasswordLink");
-const backToLoginButtonEl = document.getElementById("backToLoginButton");
 const loginFormEl = document.getElementById("loginForm");
 const loginEmployeeNoEl = document.getElementById("loginEmployeeNo");
 const loginPasswordEl = document.getElementById("loginPassword");
@@ -29,47 +20,10 @@ const logoutButtonEl = document.getElementById("logoutButton");
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
 let authenticatedUser = null;
 let passwordChangeToken = "";
-let resetPasswordToken = "";
-
-function setupPasswordToggle(buttonId, inputId, label) {
-  const button = document.getElementById(buttonId);
-  const input = document.getElementById(inputId);
-  if (!button || !input) return;
-
-  button.addEventListener("click", () => {
-    const isPassword = input.type === "password";
-    input.type = isPassword ? "text" : "password";
-    button.setAttribute("aria-pressed", String(isPassword));
-    button.setAttribute("aria-label", `${isPassword ? "Hide" : "Show"} ${label}`);
-    button.setAttribute("title", `${isPassword ? "Hide" : "Show"} ${label}`);
-    button.innerHTML = isPassword ? `
-<svg viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M3 3l18 18"></path>
-  <path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6 0 9.5 6 9.5 6a16.7 16.7 0 0 1-3.2 3.9"></path>
-  <path d="M6.1 6.9C3.7 8.6 2.5 12 2.5 12S6 18 12 18a9.8 9.8 0 0 0 4-.8"></path>
-  <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
-</svg>
-` : `
-<svg viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
-  <circle cx="12" cy="12" r="2.5"></circle>
-</svg>
-`;
-  });
-}
-
-setupPasswordToggle("toggleLoginPassword", "loginPassword", "password");
-setupPasswordToggle("toggleNewPassword", "newPassword", "new password");
-setupPasswordToggle("toggleConfirmPassword", "confirmPassword", "confirm password");
-setupPasswordToggle("toggleResetNewPassword", "resetNewPassword", "new password");
-setupPasswordToggle("toggleResetConfirmPassword", "resetConfirmPassword", "confirm password");
-
-
 
 function setAuthenticatedUi(isAuthenticated) {
   loginScreenEl?.classList.toggle("hidden", isAuthenticated);
   passwordChangeScreenEl?.classList.add("hidden");
-  resetPasswordScreenEl?.classList.add("hidden");
   appShellEl?.classList.toggle("hidden", !isAuthenticated);
 }
 
@@ -110,7 +64,6 @@ function clearStoredAuth() {
   authToken = "";
   authenticatedUser = null;
   passwordChangeToken = "";
-  resetPasswordToken = "";
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
 }
@@ -131,54 +84,6 @@ function restoreCachedUser() {
   } catch {
     authenticatedUser = null;
   }
-}
-
-function setResetPasswordMessage(message = "", isError = true) {
-  if (!resetPasswordMessageEl) return;
-  resetPasswordMessageEl.textContent = message;
-  resetPasswordMessageEl.classList.toggle("error", Boolean(message && isError));
-  resetPasswordMessageEl.classList.toggle("success", Boolean(message && !isError));
-}
-
-function showResetPasswordUi() {
-  loginScreenEl?.classList.add("hidden");
-  passwordChangeScreenEl?.classList.add("hidden");
-  appShellEl?.classList.add("hidden");
-  resetPasswordScreenEl?.classList.remove("hidden");
-  resetPasswordToken = "";
-  setResetPasswordMessage("Enter your Employee No. and set a new password.", false);
-  resetEmployeeNoEl?.focus();
-}
-
-function showLoginUi() {
-  resetPasswordToken = "";
-  resetPasswordScreenEl?.classList.add("hidden");
-  passwordChangeScreenEl?.classList.add("hidden");
-  appShellEl?.classList.add("hidden");
-  loginScreenEl?.classList.remove("hidden");
-  setResetPasswordMessage("");
-  loginEmployeeNoEl?.focus();
-}
-
-async function resetLocalPassword(employeeNo, newPassword) {
-  const response = await fetch(`${API_BASE_URL}/auth/standalone/reset-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ employeeNo, newPassword }),
-  });
-
-  let payload = null;
-  try { payload = await response.json(); } catch { payload = null; }
-
-  if (!response.ok) {
-    throw new Error(payload?.message || `Password reset failed (${response.status}).`);
-  }
-
-  if (!payload?.token) {
-    throw new Error("Password reset succeeded but no session token was returned.");
-  }
-
-  return payload;
 }
 
 async function authenticate(employeeNo, password) {
@@ -300,59 +205,6 @@ loginFormEl?.addEventListener("submit", async (event) => {
     setLoginMessage(error.message || "Unable to sign in.");
   } finally {
     loginButtonEl.disabled = false;
-  }
-});
-
-resetPasswordLinkEl?.addEventListener("click", (event) => {
-  event.preventDefault();
-  showResetPasswordUi();
-});
-
-backToLoginButtonEl?.addEventListener("click", (event) => {
-  event.preventDefault();
-  resetPasswordFormEl?.reset();
-  showLoginUi();
-});
-
-resetPasswordFormEl?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  const employeeNo = resetEmployeeNoEl?.value.trim() || "";
-  const newPassword = resetNewPasswordEl?.value || "";
-  const confirmPassword = resetConfirmPasswordEl?.value || "";
-
-  if (!employeeNo) {
-    setResetPasswordMessage("Please enter your Employee No.");
-    return;
-  }
-
-  if (newPassword.length < 8) {
-    setResetPasswordMessage("Password must be at least 8 characters.");
-    return;
-  }
-
-  if (newPassword !== confirmPassword) {
-    setResetPasswordMessage("Passwords do not match.");
-    return;
-  }
-
-  resetPasswordButtonEl.disabled = true;
-  setResetPasswordMessage("Resetting your password...", false);
-
-  try {
-    const result = await resetLocalPassword(employeeNo, newPassword);
-
-    saveAuth(result);
-    resetPasswordToken = "";
-    resetPasswordFormEl?.reset();
-    setResetPasswordMessage("");
-    setAuthenticatedUi(true);
-    loadDashboard();
-  } catch (error) {
-    resetPasswordToken = "";
-    setResetPasswordMessage(error.message || "Unable to reset password.");
-  } finally {
-    resetPasswordButtonEl.disabled = false;
   }
 });
 
@@ -665,108 +517,32 @@ function formatDisplayDate(value) {
 
 function updateCustomOptionLabel(type) {
   const isSales = type === "sales";
-  const selectEl = isSales
-    ? salesPeriodSelectEl
-    : activationPeriodSelectEl;
-  const fromEl = isSales
-    ? salesFromDateEl
-    : activationFromDateEl;
-  const toEl = isSales
-    ? salesToDateEl
-    : activationToDateEl;
-
+  const selectEl = isSales ? salesPeriodSelectEl : activationPeriodSelectEl;
+  const fromEl = isSales ? salesFromDateEl : activationFromDateEl;
+  const toEl = isSales ? salesToDateEl : activationToDateEl;
   if (!selectEl) return;
 
-  const option =
-    selectEl.querySelector(
-      'option[value="custom"]'
-    );
-
+  const option = selectEl.querySelector('option[value="custom"]');
   if (!option) return;
+  const captionEl = isSales ? salesCustomRangeCaptionEl : activationCustomRangeCaptionEl;
 
-  const captionEl = isSales
-    ? salesCustomRangeCaptionEl
-    : activationCustomRangeCaptionEl;
-
-  if (
-    selectEl.value === "custom" &&
-    fromEl?.value
-  ) {
-    option.textContent =
-      "Custom dates";
-
+  if (selectEl.value === "custom" && fromEl?.value) {
+    const from = formatDisplayDate(fromEl.value);
+    const to = formatDisplayDate(toEl?.value || fromEl.value);
+    option.textContent = "Custom dates";
     if (captionEl) {
-      const safeFrom =
-        fromEl.value || todayString();
-      const safeTo =
-        toEl?.value ||
-        safeFrom;
-
-      captionEl.innerHTML = `
-        <input
-          type="date"
-          class="custom-range-editor-input"
-          data-custom-range-type="${type}"
-          data-custom-range-part="from"
-          value="${safeFrom}"
-          aria-label="${isSales ? "Sales" : "Activation"} date from"
-        />
-        <span class="custom-range-editor-separator">to</span>
-        <input
-          type="date"
-          class="custom-range-editor-input"
-          data-custom-range-type="${type}"
-          data-custom-range-part="to"
-          value="${safeTo}"
-          aria-label="${isSales ? "Sales" : "Activation"} date to"
-        />
-      `;
-
-      captionEl.style.display =
-        "flex";
-      captionEl.style.alignItems =
-        "center";
-      captionEl.style.gap =
-        "6px";
-      captionEl.style.padding =
-        "4px 8px";
-      captionEl.style.boxSizing =
-        "border-box";
-
-      captionEl
-        .querySelectorAll(
-          ".custom-range-editor-input"
-        )
-        .forEach((input) => {
-          input.style.flex =
-            "1 1 0";
-          input.style.minWidth =
-            "0";
-          input.style.width =
-            "100%";
-          input.style.boxSizing =
-            "border-box";
-          input.style.cursor =
-            "pointer";
-        });
-
-      captionEl.classList.add(
-        "visible"
-      );
+      captionEl.textContent = `${shortDisplayDate(from)}  –  ${shortDisplayDate(to)}`;
+      captionEl.classList.add("visible");
     }
   } else {
-    option.textContent =
-      "Customize...";
-
+    option.textContent = "Customize...";
     if (captionEl) {
-      captionEl.innerHTML = "";
-      captionEl.style.display = "";
-      captionEl.classList.remove(
-        "visible"
-      );
+      captionEl.textContent = "";
+      captionEl.classList.remove("visible");
     }
   }
 }
+
 function setDateRange(type, period) {
   const isSales = type === "sales";
   const fromEl = isSales ? salesFromDateEl : activationFromDateEl;
@@ -805,33 +581,7 @@ function setDateFilterEnabled(type, enabled) {
     updateCustomOptionLabel(type);
   }
 }
-function setDefaultDates() {
-  salesDateEnabledEl.checked =
-    true;
 
-  activationDateEnabledEl.checked =
-    false;
-
-  setDateRange(
-    "sales",
-    "today"
-  );
-
-  setDateRange(
-    "activation",
-    "today"
-  );
-
-  setDateFilterEnabled(
-    "sales",
-    true
-  );
-
-  setDateFilterEnabled(
-    "activation",
-    false
-  );
-}
 function initDateFilters() {
   setDateRange("sales", "today");
   setDateRange("activation", "today");
@@ -1557,13 +1307,24 @@ function renderAuthorizationContext(response) {
   const accessLevel = String(auth.accessLevel || "").trim();
   const organizationCode = String(auth.organizationCode || "110").trim();
 
+  // Display the logged-in employee's name on the first line
+  // and Employee No. on the second line.
+  // The name comes from the authenticated session user, which is
+  // populated from the Kingdee Employee Master.
+  const employeeName = String(
+    authenticatedUser?.employeeName ||
+    authenticatedUser?.name ||
+    auth.employeeName ||
+    employeeNo ||
+    "Employee"
+  ).trim();
+
   if (authenticated && employeeNo) {
     if (identityNameEl) {
-      identityNameEl.textContent = employeeNo;
+      identityNameEl.textContent = employeeName;
     }
     if (identityAccessEl) {
-      identityAccessEl.textContent =
-        [role, accessLevel].filter(Boolean).join(" · ") || "Authorized User";
+      identityAccessEl.textContent = employeeNo;
     }
   } else {
     if (identityNameEl) {
@@ -2045,66 +1806,6 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
-async function syncSelectedSalesDateRange() {
-  const fromDate = String(
-    salesFromDateEl?.value || ""
-  ).trim();
-
-  const toDate = String(
-    salesToDateEl?.value || ""
-  ).trim();
-
-  if (!fromDate) {
-    throw new Error(
-      "Please select a Sales Date range before refreshing."
-    );
-  }
-
-  const params = new URLSearchParams({
-    fromDate,
-    toDate,
-    limit: "100",
-  });
-
-  setMessage("Synchronizing sell-out data from Kingdee...");
-
-  const result = await fetchJson(
-    `${API_BASE_URL}/kingdee/serial-data-sync-all?${params}`
-  );
-
-  console.log(
-    "[REFRESH] Kingdee sell-out sync complete:",
-    result
-  );
-
-  return result;
-}
-
-async function refreshDashboard() {
-  if (refreshButton.disabled) return;
-
-  refreshButton.disabled = true;
-  exportButton.disabled = true;
-  document.body.classList.add("dashboard-loading");
-
-  try {
-    await syncSelectedSalesDateRange();
-    await loadDashboard();
-  } catch (error) {
-    console.error(error);
-
-    setApiStatus(false);
-    setMessage(
-      error?.message ||
-        "Unable to synchronize sell-out data from Kingdee.",
-      true
-    );
-  } finally {
-    refreshButton.disabled = false;
-    document.body.classList.remove("dashboard-loading");
-  }
-}
-
 async function loadDashboard() {
   document.body.classList.add("dashboard-loading");
   exportButton.disabled = true;
@@ -2215,40 +1916,48 @@ function getEffectiveExportScope() {
 }
 
 async function exportExcel() {
-  if (!authToken) {
-    setLoginMessage("Your session has expired. Please sign in again.");
-    setAuthenticatedUi(false);
-    return;
+  const params = new URLSearchParams();
+
+  appendDateFilterParams(
+    params
+  );
+
+  const effectiveScope =
+    getEffectiveExportScope();
+
+  for (
+    const [key, value] of
+    Object.entries(
+      effectiveScope
+    )
+  ) {
+    if (value) {
+      params.set(
+        key,
+        value
+      );
+    }
   }
 
-  const params = currentQueryParams();
-  const currentUser = authenticatedUser || {};
-  const department = String(
-    currentUser.department || currentUser.Department || "CurrentAreaAccess"
-  ).trim();
-  const safeDepartment = (department || "CurrentAreaAccess")
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
-    .replace(/\s+/g, " ")
-    .replace(/^[. ]+|[. ]+$/g, "") || "CurrentAreaAccess";
+  if (state.selectedSearchFilter) {
+    params.set(
+      "filterType",
+      state.selectedSearchFilter.type
+    );
 
-  // Capture the timestamp when the user starts the export so the filename
-  // represents the actual export action.
-  const exportTimestamp = new Date();
-  const stamp = `${exportTimestamp.getFullYear()}${String(exportTimestamp.getMonth() + 1).padStart(2, "0")}${String(exportTimestamp.getDate()).padStart(2, "0")}_${String(exportTimestamp.getHours()).padStart(2, "0")}${String(exportTimestamp.getMinutes()).padStart(2, "0")}${String(exportTimestamp.getSeconds()).padStart(2, "0")}`;
-  const filename = `EKSBASE_Report_${safeDepartment}_${stamp}.xlsx`;
+    params.set(
+      "filterValue",
+      state.selectedSearchFilter.value
+    );
+  }
 
   exportButton.disabled = true;
-  setMessage("Preparing Excel export...", false);
 
   try {
-    const response = await fetch(`${API_BASE_URL}/dashboard/export?${params.toString()}`, {
-      method: "GET",
-      headers: {
-        Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        Authorization: `Bearer ${authToken}`,
-      },
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/dashboard/export?${params}`,
+      { headers: { Authorization: `Bearer ${authToken}` } }
+    );
 
     if (response.status === 401) {
       clearStoredAuth();
@@ -2259,29 +1968,34 @@ async function exportExcel() {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
+      throw new Error(`${response.status} ${response.statusText}: ${text}`);
     }
 
     const blob = await response.blob();
-    if (!blob || blob.size === 0) {
-      throw new Error("The export response was empty. No Excel file was produced.");
-    }
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const currentDepartment = String(
+      authenticatedUser?.department ||
+      authenticatedUser?.Department ||
+      "CurrentAreaAccess"
+    ).trim();
 
+    const safeDepartment =
+      (currentDepartment || "CurrentAreaAccess")
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
+        .replace(/\s+/g, " ")
+        .replace(/^[. ]+|[. ]+$/g, "") ||
+      "CurrentAreaAccess";
+
+    const filename = `EKSBASE_Report_${safeDepartment}_CurrentAreaAccess_Duration.xlsx`;
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = objectUrl;
     anchor.download = filename;
-    anchor.style.display = "none";
     document.body.appendChild(anchor);
     anchor.click();
-
-    // Give Chromium time to start the download before releasing the Blob URL.
-    setTimeout(() => {
-      URL.revokeObjectURL(objectUrl);
-      anchor.remove();
-    }, 1500);
-
-    setMessage("Excel export completed.", false);
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
   } catch (error) {
     console.error("Excel export failed", error);
     setMessage(error.message || "Unable to export Excel.", true);
@@ -2296,114 +2010,24 @@ let lastActivationPeriod = "today";
 
 function handlePeriodSelection(type) {
   const isSales = type === "sales";
-  const enabledEl =
-    isSales
-      ? salesDateEnabledEl
-      : activationDateEnabledEl;
-  const selectEl =
-    isSales
-      ? salesPeriodSelectEl
-      : activationPeriodSelectEl;
+  const enabledEl = isSales ? salesDateEnabledEl : activationDateEnabledEl;
+  const selectEl = isSales ? salesPeriodSelectEl : activationPeriodSelectEl;
+  if (!enabledEl.checked || !selectEl) return;
 
-  if (
-    !enabledEl.checked ||
-    !selectEl
-  ) {
-    return;
-  }
-
-  const period =
-    selectEl.value;
-
+  const period = selectEl.value;
   if (period === "custom") {
-    setDateRange(
-      type,
-      "custom"
-    );
+    setDateRange(type, "custom");
+    openDateCustomizeModal(type);
     return;
   }
 
-  if (isSales) {
-    lastSalesPeriod =
-      period;
-  } else {
-    lastActivationPeriod =
-      period;
-  }
-
-  setDateRange(
-    type,
-    period
-  );
+  if (isSales) lastSalesPeriod = period;
+  else lastActivationPeriod = period;
+  setDateRange(type, period);
 }
 
 salesPeriodSelectEl?.addEventListener("change", () => handlePeriodSelection("sales"));
 activationPeriodSelectEl?.addEventListener("change", () => handlePeriodSelection("activation"));
-
-[
-  salesCustomRangeCaptionEl,
-  activationCustomRangeCaptionEl,
-].forEach((captionEl) => {
-  captionEl?.addEventListener(
-    "change",
-    (event) => {
-      const input =
-        event.target.closest(
-          ".custom-range-editor-input"
-        );
-
-      if (!input) {
-        return;
-      }
-
-      const type =
-        input.dataset.customRangeType;
-
-      const fromEl =
-        type === "sales"
-          ? salesFromDateEl
-          : activationFromDateEl;
-
-      const toEl =
-        type === "sales"
-          ? salesToDateEl
-          : activationToDateEl;
-
-      const part =
-        input.dataset.customRangePart;
-
-      if (part === "from") {
-        fromEl.value =
-          input.value;
-
-        if (
-          toEl.value &&
-          toEl.value <
-            fromEl.value
-        ) {
-          toEl.value =
-            fromEl.value;
-        }
-      } else {
-        toEl.value =
-          input.value;
-
-        if (
-          fromEl.value &&
-          toEl.value <
-            fromEl.value
-        ) {
-          fromEl.value =
-            toEl.value;
-        }
-      }
-
-      updateCustomOptionLabel(
-        type
-      );
-    }
-  );
-});
 
 activationDateEnabledEl?.addEventListener("change", () => {
   const enabled = Boolean(activationDateEnabledEl.checked);
@@ -2469,19 +2093,9 @@ applyButton.addEventListener("click", () => {
   loadDashboard();
 });
 
-refreshButton.addEventListener("click", refreshDashboard);
-
-// Export must be registered before optional navigation controls so a missing
-// back button cannot stop the rest of the dashboard event wiring.
-exportButton.addEventListener("click", (event) => {
-  event.preventDefault();
-  if (exportButton.disabled) return;
-  exportExcel();
-});
-
-// The current dashboard layout does not always render a back button.
-// Guard the listener so its absence cannot stop script execution.
-backButton?.addEventListener("click", goBack);
+refreshButton.addEventListener("click", loadDashboard);
+backButton.addEventListener("click", goBack);
+exportButton.addEventListener("click", exportExcel);
 
 globalSearchEl.addEventListener(
   "input",
