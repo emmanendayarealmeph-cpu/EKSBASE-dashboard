@@ -322,7 +322,7 @@ export async function createStandaloneSession(employeeNo, password) {
 
   if (Number(employee.isActive) !== 1) {
     logLoginTiming("Login FAILED (inactive employee)", loginStartedAt);
-    const error = new Error("Employee dashboard access is inactive.");
+    const error = new Error("Employee is inactive.");
     error.statusCode = 403;
     throw error;
   }
