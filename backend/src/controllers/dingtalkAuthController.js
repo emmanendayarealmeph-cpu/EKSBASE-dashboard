@@ -8,119 +8,123 @@ import {
 } from "../auth/dashboardSession.js";
 
 import {
-  getEmployeeByIdentity,
+  getEmployeeAccess,
 } from "../auth/employeeAccess.js";
 
-export async function loginWithDingTalk(
-  req,
-  res,
-  next
-) {
+import {
+  kingdeeService,
+} from "../services/kingdeeService.js";
+
+export async function loginWithDingTalk(req, res, next) {
+  const startedAt = performance.now();
+
   try {
-    const authCode =
-      req.body?.authCode;
+    const authCode = String(req.body?.authCode || "").trim();
 
     if (!authCode) {
       return res.status(400).json({
-        error:
-          "authCode is required.",
+        status: "error",
+        message: "authCode is required.",
       });
     }
 
-    const identity =
-      await authenticateDingTalk(
-        authCode
-      );
+    console.log("[DINGTALK SSO] Authentication START");
+
+    const identity = await authenticateDingTalk(authCode);
+
+    console.log(
+      `[DINGTALK SSO] Identity resolved +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
+    );
 
     /*
-     * IMPORTANT:
-     * Authentication does not grant dashboard access.
+     * Critical identity rule:
+     * DingTalk Job Number = Kingdee Employee No.
      *
-     * The employee must already exist in EKSBASE
-     * Employee Access.
+     * Validate the Job Number against Kingdee itself. We do not
+     * accept an Employee No. supplied by the browser and we do not
+     * require a manually-created DingTalk identity mapping.
      */
-    const employee =
-      getEmployeeByIdentity({
-        provider:
-          identity.provider,
-        providerSubject:
-          identity.providerSubject,
-      });
+    const kingdeeEmployee =
+      await kingdeeService.getEmployeeByEmployeeNo(identity.employeeNo);
 
-    /*
-     * The identity mapping may not exist on first login.
-     *
-     * For the first Phase 2 implementation, require the
-     * administrator to provision the employee in
-     * employee_access/user_identities.
-     *
-     * This prevents an arbitrary DingTalk employee from
-     * becoming a dashboard user automatically.
-     */
-    if (!employee || !employee.isActive) {
+    if (!kingdeeEmployee) {
       return res.status(403).json({
-        error:
-          "DingTalk account authenticated, but no active EKSBASE Employee Access record was found.",
-        employeeNo:
-          identity.employeeNo,
+        status: "error",
+        message: "Your DingTalk Job Number was not found in the Kingdee Employee Master.",
+        employeeNo: identity.employeeNo,
       });
     }
 
-    /*
-     * Defense-in-depth identity check.
-     */
+    // Kingdee is the authoritative source for whether the employee is active.
+    // FForbidStatus = true  -> disabled -> deny authentication.
+    // FForbidStatus = false -> active   -> continue to EKSBASE authorization.
+    if (kingdeeEmployee.isActive !== true) {
+      return res.status(403).json({
+        status: "error",
+        message: "Your Kingdee employee account is disabled.",
+        employeeNo: identity.employeeNo,
+      });
+    }
+
+    const employee = getEmployeeAccess(identity.employeeNo);
+
+    if (!employee || Number(employee.isActive) !== 1) {
+      return res.status(403).json({
+        status: "error",
+        message: "Your Kingdee employee account is not configured for EKSBASE Dashboard access.",
+        employeeNo: identity.employeeNo,
+      });
+    }
+
     if (
-      String(
-        employee.employeeNo
-      ).trim() !==
-      String(
-        identity.employeeNo
-      ).trim()
+      String(kingdeeEmployee.salesNo || "").trim().toUpperCase() !==
+      String(identity.employeeNo).trim().toUpperCase()
     ) {
       return res.status(403).json({
-        error:
-          "DingTalk Job Number does not match Kingdee Employee No.",
+        status: "error",
+        message: "DingTalk Job Number does not match the Kingdee Employee No.",
       });
     }
 
-    setDashboardSession(
-      res,
-      identity
+    /*
+     * Preserve the existing EKSBASE authorization model.
+     * DingTalk proves identity; employee_access controls access.
+     */
+    setDashboardSession(res, {
+      ...identity,
+      providerSubject: identity.providerSubject,
+    });
+
+    console.log(
+      `[DINGTALK SSO] Authentication COMPLETE +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
     );
 
     return res.json({
       status: "ok",
-
+      provider: "dingtalk",
       user: {
-        employeeNo:
-          employee.employeeNo,
-        role:
-          employee.role,
-        accessLevel:
-          employee.accessLevel,
-        district:
-          employee.district,
-        region:
-          employee.region,
-        subRegion:
-          employee.subRegion,
-        warehouseCode:
-          employee.warehouseCode,
-        displayName:
-          identity.displayName,
-        avatar:
-          identity.avatar,
+        employeeNo: employee.employeeNo,
+        role: employee.role,
+        department: employee.department,
+        accessLevel: employee.accessLevel,
+        district: employee.district,
+        region: employee.region,
+        subRegion: employee.subRegion,
+        warehouseCode: employee.warehouseCode,
+        displayName: identity.displayName || kingdeeEmployee.employeeName || "",
+        avatar: identity.avatar || "",
       },
     });
   } catch (error) {
-    next(error);
+    console.error(
+      `[DINGTALK SSO] Authentication FAILED +${Math.round(performance.now() - startedAt)}ms:`,
+      error?.message || error
+    );
+    return next(error);
   }
 }
 
-export function logout(
-  _req,
-  res
-) {
+export function logout(_req, res) {
   clearDashboardSession(res);
 
   return res.json({
@@ -128,34 +132,17 @@ export function logout(
   });
 }
 
-export function getCurrentUser(
-  req,
-  res
-) {
+export function getCurrentUser(req, res) {
   if (!req.dashboardUser) {
     return res.status(401).json({
-      error:
-        "Authentication required.",
+      status: "error",
+      message: "Authentication required.",
     });
   }
 
   return res.json({
     status: "ok",
-    user: {
-      employeeNo:
-        req.dashboardUser.employeeNo,
-      role:
-        req.dashboardUser.role,
-      accessLevel:
-        req.dashboardUser.accessLevel,
-      district:
-        req.dashboardUser.district,
-      region:
-        req.dashboardUser.region,
-      subRegion:
-        req.dashboardUser.subRegion,
-      warehouseCode:
-        req.dashboardUser.warehouseCode,
-    },
+    provider: req.authenticatedIdentity?.provider || "",
+    user: req.dashboardUser,
   });
 }

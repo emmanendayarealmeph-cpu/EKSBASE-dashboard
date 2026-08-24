@@ -10,11 +10,11 @@ import {
   requireAuthenticatedUser,
 } from "../auth/requireAuthenticatedUser.js";
 
-const router =
-  express.Router();
+const router = express.Router();
 
 /*
- * Frontend posts the one-time DingTalk authCode here.
+ * Frontend obtains a one-time DingTalk authCode using the official
+ * DingTalk JSAPI and posts that code here.
  *
  * POST /auth/dingtalk/login
  */
@@ -24,12 +24,6 @@ router.post(
   loginWithDingTalk
 );
 
-/*
- * Current authenticated EKSBASE user.
- *
- * The dashboard session middleware must run before
- * requireAuthenticatedUser.
- */
 router.get(
   "/me",
   requireAuthenticatedUser,

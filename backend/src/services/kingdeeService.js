@@ -185,6 +185,7 @@ const employeeFields = [
   "F_RTA_Role.FName",
   "F_RTA_HireDate",
   "F_RTA_ResignDate",
+  "FForbidStatus",
 ];
 
 function createFieldIndex(fields) {
@@ -1252,6 +1253,9 @@ function mapEmployeeRow(row) {
   const getValue = (fieldKey) =>
     row[employeeFieldIndex[fieldKey]] ?? "";
 
+  const forbidStatus =
+    getValue("FForbidStatus") === true;
+
   return {
     salesNo:
       getValue("FStaffNumber"),
@@ -1276,6 +1280,15 @@ function mapEmployeeRow(row) {
 
     salesLwd:
       getValue("F_RTA_ResignDate"),
+
+    // Kingdee employee status:
+    // FForbidStatus = true  -> disabled
+    // FForbidStatus = false -> active
+    disable:
+      forbidStatus,
+
+    isActive:
+      !forbidStatus,
   };
 }
 

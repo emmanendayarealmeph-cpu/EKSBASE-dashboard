@@ -2,6 +2,13 @@ const API_BASE_URL = "https://eksbase-dashboard.onrender.com";
 const AUTH_TOKEN_KEY = "eksbase.auth.token";
 const AUTH_USER_KEY = "eksbase.auth.user";
 
+// DingTalk SSO configuration.
+// Replace these placeholders with the real DingTalk application values
+// after the DingTalk application is configured. Never put the Client Secret
+// in frontend code.
+const DINGTALK_CLIENT_ID = "YOUR_DINGTALK_CLIENT_ID";
+const DINGTALK_CORP_ID = "YOUR_DINGTALK_CORP_ID";
+
 const loginScreenEl = document.getElementById("loginScreen");
 const appShellEl = document.getElementById("appShell");
 const passwordChangeScreenEl = document.getElementById("passwordChangeScreen");
@@ -15,6 +22,8 @@ const loginEmployeeNoEl = document.getElementById("loginEmployeeNo");
 const loginPasswordEl = document.getElementById("loginPassword");
 const loginButtonEl = document.getElementById("loginButton");
 const loginMessageEl = document.getElementById("loginMessage");
+const dingtalkLoginButtonEl = document.getElementById("dingtalkLoginButton");
+const dingtalkLoginMessageEl = document.getElementById("dingtalkLoginMessage");
 const logoutButtonEl = document.getElementById("logoutButton");
 const adminButtonEl = document.getElementById("adminButton");
 const adminResetModalEl = document.getElementById("adminResetModal");
@@ -32,7 +41,186 @@ function getStoredAuthToken() {
 let authToken = getStoredAuthToken();
 let authenticatedUser = null;
 let passwordChangeToken = "";
+let isDingTalkSession = false;
+let dingTalkLoginInProgress = false;
 
+
+
+function isDingTalkEnvironment() {
+  const userAgent = String(navigator.userAgent || "");
+  return Boolean(
+    window.dd ||
+    /DingTalk/i.test(userAgent) ||
+    /DingTalk/i.test(String(navigator.vendor || ""))
+  );
+}
+
+function getDingTalkCorpId() {
+  const params = new URLSearchParams(window.location.search);
+  return (
+    params.get("corpid") ||
+    params.get("corpId") ||
+    DINGTALK_CORP_ID
+  ).trim();
+}
+
+function setDingTalkLoginMessage(message = "", isError = true) {
+  if (!dingtalkLoginMessageEl) return;
+  dingtalkLoginMessageEl.textContent = message;
+  dingtalkLoginMessageEl.classList.toggle("error", Boolean(message && isError));
+  dingtalkLoginMessageEl.classList.toggle("success", Boolean(message && !isError));
+}
+
+function showDingTalkLoginButton(show) {
+  dingtalkLoginButtonEl?.classList.toggle("hidden", !show);
+}
+
+function isDingTalkConfigured() {
+  return Boolean(
+    DINGTALK_CLIENT_ID &&
+    DINGTALK_CORP_ID &&
+    !DINGTALK_CLIENT_ID.startsWith("YOUR_") &&
+    !DINGTALK_CORP_ID.startsWith("YOUR_")
+  );
+}
+
+function requestDingTalkAuthCode() {
+  return new Promise((resolve, reject) => {
+    if (!window.dd || typeof window.dd.requestAuthCode !== "function") {
+      reject(new Error("DingTalk JSAPI is not available. Please open EKSBASE inside DingTalk."));
+      return;
+    }
+
+    const corpId = getDingTalkCorpId();
+
+    if (!DINGTALK_CLIENT_ID || DINGTALK_CLIENT_ID.startsWith("YOUR_")) {
+      reject(new Error("DingTalk Client ID is not configured yet."));
+      return;
+    }
+
+    if (!corpId || corpId.startsWith("YOUR_")) {
+      reject(new Error("DingTalk Corp ID is not configured yet."));
+      return;
+    }
+
+    window.dd.requestAuthCode({
+      clientId: DINGTALK_CLIENT_ID,
+      corpId,
+      success: (result) => {
+        const code = String(result?.code || result?.authCode || "").trim();
+        if (!code) {
+          reject(new Error("DingTalk did not return an authorization code."));
+          return;
+        }
+        resolve(code);
+      },
+      fail: (error) => {
+        console.error("[DINGTALK SSO] requestAuthCode failed", error);
+        reject(new Error("Unable to obtain DingTalk authorization. Please try again."));
+      },
+    });
+  });
+}
+
+async function authenticateWithDingTalk() {
+  if (dingTalkLoginInProgress) return;
+
+  dingTalkLoginInProgress = true;
+  dingtalkLoginButtonEl && (dingtalkLoginButtonEl.disabled = true);
+  setDingTalkLoginMessage("Signing in with DingTalk...", false);
+
+  try {
+    const authCode = await requestDingTalkAuthCode();
+
+    const response = await fetch(`${API_BASE_URL}/auth/dingtalk/login`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ authCode }),
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        payload?.message ||
+        `DingTalk login failed (${response.status}).`
+      );
+    }
+
+    const meResponse = await fetch(`${API_BASE_URL}/auth/dingtalk/me`, {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    let mePayload = null;
+    try {
+      mePayload = await meResponse.json();
+    } catch {
+      mePayload = null;
+    }
+
+    if (!meResponse.ok || !mePayload?.user) {
+      throw new Error(
+        mePayload?.message ||
+        `DingTalk session could not be established (${meResponse.status}).`
+      );
+    }
+
+    clearStoredAuth();
+    isDingTalkSession = true;
+    authenticatedUser = mePayload.user;
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authenticatedUser));
+
+    setDingTalkLoginMessage("DingTalk login successful.", false);
+    setAuthenticatedUi(true);
+    loadDashboard();
+  } catch (error) {
+    isDingTalkSession = false;
+    setDingTalkLoginMessage(error?.message || "Unable to sign in with DingTalk.");
+    setAuthenticatedUi(false);
+  } finally {
+    dingTalkLoginInProgress = false;
+    if (dingtalkLoginButtonEl) {
+      dingtalkLoginButtonEl.disabled = false;
+    }
+  }
+}
+
+async function validateDingTalkSession() {
+  if (!isDingTalkEnvironment()) return false;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/dingtalk/me`, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+
+    if (!response.ok) return false;
+
+    const payload = await response.json();
+    if (!payload?.user) return false;
+
+    authenticatedUser = payload.user;
+    isDingTalkSession = true;
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authenticatedUser));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Password visibility toggles. Keep this isolated from authentication logic.
 function setupPasswordToggle(buttonId, inputId, label) {
@@ -113,6 +301,7 @@ function clearStoredAuth() {
   authToken = "";
   authenticatedUser = null;
   passwordChangeToken = "";
+  isDingTalkSession = false;
   localStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
@@ -192,8 +381,16 @@ async function validateExistingSession() {
 }
 
 async function handleLogout() {
+  const wasDingTalkSession = isDingTalkSession;
+
   try {
-    if (authToken) {
+    if (wasDingTalkSession) {
+      await fetch(`${API_BASE_URL}/auth/dingtalk/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+    } else if (authToken) {
       await fetch(`${API_BASE_URL}/auth/standalone/logout`, {
         method: "POST",
         headers: { Authorization: `Bearer ${authToken}` },
@@ -213,6 +410,34 @@ async function handleLogout() {
 async function initializeAuthentication() {
   setAuthenticatedUi(false);
   restoreCachedUser();
+
+  const inDingTalk = isDingTalkEnvironment();
+  showDingTalkLoginButton(inDingTalk);
+
+  if (inDingTalk) {
+    // If DingTalk already has an EKSBASE session cookie, reuse it.
+    const validDingTalkSession = await validateDingTalkSession();
+
+    if (validDingTalkSession) {
+      setAuthenticatedUi(true);
+      loadDashboard();
+      return;
+    }
+
+    // In DingTalk, automatically request SSO rather than asking the
+    // employee to type the Employee No. and password.
+    if (isDingTalkConfigured()) {
+      await authenticateWithDingTalk();
+      return;
+    }
+
+    setDingTalkLoginMessage(
+      "DingTalk SSO is not configured yet. Please use the normal login or configure the DingTalk Client ID/Corp ID.",
+      true
+    );
+    loginEmployeeNoEl?.focus();
+    return;
+  }
 
   const validSession = await validateExistingSession();
   if (validSession) {
@@ -260,6 +485,10 @@ loginFormEl?.addEventListener("submit", async (event) => {
   } finally {
     loginButtonEl.disabled = false;
   }
+});
+
+dingtalkLoginButtonEl?.addEventListener("click", () => {
+  authenticateWithDingTalk();
 });
 
 // Self-service password reset is intentionally disabled.
@@ -2031,6 +2260,7 @@ async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
     ...options,
     headers,
+    credentials: isDingTalkSession ? "include" : (options.credentials || "same-origin"),
   });
 
   if (response.status === 401) {
@@ -2248,8 +2478,9 @@ async function exportExcel() {
       method: "GET",
       headers: {
         Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        Authorization: `Bearer ${authToken}`,
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
+      credentials: isDingTalkSession ? "include" : "same-origin",
       cache: "no-store",
     });
 

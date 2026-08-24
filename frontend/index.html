@@ -52,6 +52,20 @@
       stroke-linecap: round;
       stroke-linejoin: round;
     }
+
+    .dingtalk-login-button {
+      margin-top: 10px;
+      border: 1px solid #1677ff;
+      background: #fff;
+      color: #1677ff;
+    }
+    .dingtalk-login-button:hover {
+      background: #f0f7ff;
+    }
+    .dingtalk-login-button:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
   </style>
 </head>
 <body>
@@ -82,6 +96,10 @@
         </div>
         <div id="loginMessage" class="login-message" role="alert"></div>
         <button id="loginButton" class="login-button" type="submit">Sign In</button>
+        <button id="dingtalkLoginButton" class="login-button dingtalk-login-button hidden" type="button">
+          Sign in with DingTalk
+        </button>
+        <div id="dingtalkLoginMessage" class="login-message" role="alert"></div>
         <button id="resetPasswordLink" class="login-link-button" type="button">Forgot / Reset Password</button>
       </form>
 
@@ -393,6 +411,8 @@
     </div>
   </div>
 
-  <script src="./js/app.js?v=20260822-auth-cleanup"></script>
+  <!-- DingTalk JSAPI: used only when EKSBASE is opened inside DingTalk. -->
+  <script src="https://g.alicdn.com/dingding/dingtalk-jsapi/3.0.0/dingtalk.open.js"></script>
+  <script src="./js/app.js?v=20260824-dingtalk-sso"></script>
 </body>
 </html>

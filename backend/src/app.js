@@ -3,21 +3,15 @@ import healthRouter from "./routes/health.js";
 import kingdeeRouter from "./routes/kingdee.js";
 import dashboardRouter from "./routes/dashboard.js";
 import standaloneAuthRouter from "./routes/standaloneAuth.js";
-import { requireAuthenticatedUser } from "./auth/requireAuthenticatedUser.js";
+import dingtalkAuthRouter from "./routes/dingtalkAuth.js";
 
 const app = express();
 
 /*
  * CORS
  *
- * Allows the local frontend to communicate with
- * the backend API during development.
- *
- * Frontend:
- * http://localhost:3001
- *
- * Backend:
- * http://localhost:3000
+ * Allows the configured EKSBASE frontend to communicate with
+ * the backend API during development and production.
  */
 const allowedOrigins = new Set([
   "http://localhost:3001",
@@ -30,6 +24,7 @@ app.use((req, res, next) => {
   if (allowedOrigins.has(requestOrigin)) {
     res.header("Access-Control-Allow-Origin", requestOrigin);
     res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
   }
 
   res.header(
@@ -51,7 +46,7 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.json({
     message: "Kingdee Data Platform API is running 🚀",
   });
@@ -60,10 +55,13 @@ app.get("/", (req, res) => {
 app.use("/health", healthRouter);
 app.use("/kingdee", kingdeeRouter);
 
-// Phase 3A: standalone development authentication.
+/* Existing standalone Employee No. + password authentication. */
 app.use("/auth/standalone", standaloneAuthRouter);
 
-// Phase 3A: dashboard is now authenticated before authorization runs.
-app.use("/dashboard", requireAuthenticatedUser, dashboardRouter);
+/* DingTalk SSO authentication. */
+app.use("/auth/dingtalk", dingtalkAuthRouter);
+
+/* Dashboard routes enforce authentication individually. */
+app.use("/dashboard", dashboardRouter);
 
 export default app;
