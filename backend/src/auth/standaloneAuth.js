@@ -27,6 +27,12 @@ function clean(value) {
   return String(value ?? "").trim();
 }
 
+function logLoginTiming(stage, startedAt, extra = "") {
+  const elapsedMs = Math.round(performance.now() - startedAt);
+  const suffix = extra ? ` ${extra}` : "";
+  console.log(`[AUTH PERF] ${stage} +${elapsedMs}ms${suffix}`);
+}
+
 function normalizeDepartment(value) {
   const department = clean(value).toUpperCase();
   if (department === "SUB-REGION") return "SUB_REGION";
@@ -34,14 +40,29 @@ function normalizeDepartment(value) {
   return department;
 }
 
-async function refreshEmployeeAccessFromKingdee(employeeNo) {
+async function refreshEmployeeAccessFromKingdee(employeeNo, loginStartedAt = null) {
   const normalizedEmployeeNo = clean(employeeNo);
   if (!normalizedEmployeeNo) return null;
 
   const currentAccess = getEmployeeAccess(normalizedEmployeeNo);
+
+  if (loginStartedAt !== null) {
+    logLoginTiming("Kingdee employee lookup START", loginStartedAt);
+  }
+
+  const kingdeeStartedAt = performance.now();
   const kingdeeEmployee = await kingdeeService.getEmployeeByEmployeeNo(
     normalizedEmployeeNo
   );
+
+  const kingdeeElapsedMs = Math.round(performance.now() - kingdeeStartedAt);
+  if (loginStartedAt !== null) {
+    logLoginTiming(
+      "Kingdee employee lookup COMPLETE",
+      loginStartedAt,
+      `(step=${kingdeeElapsedMs}ms)`
+    );
+  }
 
   if (!kingdeeEmployee) return currentAccess || null;
 
@@ -261,10 +282,14 @@ export async function resetEmployeePasswordByAdmin(employeeNo) {
 }
 
 export async function createStandaloneSession(employeeNo, password) {
+  const loginStartedAt = performance.now();
   const normalizedEmployeeNo = clean(employeeNo);
+
+  console.log("[AUTH PERF] Login START");
 
   if (isConfiguredAdminCredential(normalizedEmployeeNo, password)) {
     const { token, expiresAt } = createAdminSession();
+    logLoginTiming("Login COMPLETE (admin)", loginStartedAt);
     return {
       token,
       expiresAt,
@@ -277,12 +302,17 @@ export async function createStandaloneSession(employeeNo, password) {
   if (!normalizedEmployeeNo) {
     const error = new Error("employeeNo is required.");
     error.statusCode = 400;
+    logLoginTiming("Login FAILED (missing employeeNo)", loginStartedAt);
     throw error;
   }
 
-  const employee = await refreshEmployeeAccessFromKingdee(normalizedEmployeeNo);
+  const employee = await refreshEmployeeAccessFromKingdee(
+    normalizedEmployeeNo,
+    loginStartedAt
+  );
 
   if (!employee) {
+    logLoginTiming("Login FAILED (employee not found)", loginStartedAt);
     const error = new Error(
       "Employee was not found in Kingdee Employee Master and is not configured for dashboard access."
     );
@@ -291,6 +321,7 @@ export async function createStandaloneSession(employeeNo, password) {
   }
 
   if (Number(employee.isActive) !== 1) {
+    logLoginTiming("Login FAILED (inactive employee)", loginStartedAt);
     const error = new Error("Employee dashboard access is inactive.");
     error.statusCode = 403;
     throw error;
@@ -300,6 +331,7 @@ export async function createStandaloneSession(employeeNo, password) {
     !employee.accessLevel &&
     String(employee.role).toUpperCase() !== "PROMOTER"
   ) {
+    logLoginTiming("Login FAILED (no dashboard access)", loginStartedAt);
     const error = new Error(
       "Employee has no dashboard access level configured."
     );
@@ -308,11 +340,25 @@ export async function createStandaloneSession(employeeNo, password) {
   }
 
   const suppliedPassword = String(password ?? "");
+
+  const credentialStartedAt = performance.now();
+  logLoginTiming("Neon credential lookup START", loginStartedAt);
+
   const credentialExists = await hasLocalCredential(normalizedEmployeeNo);
   const credentialState = await getLocalCredentialState(normalizedEmployeeNo);
 
+  const credentialElapsedMs = Math.round(
+    performance.now() - credentialStartedAt
+  );
+  logLoginTiming(
+    "Neon credential lookup COMPLETE",
+    loginStartedAt,
+    `(step=${credentialElapsedMs}ms)`
+  );
+
   if (!credentialExists) {
     if (suppliedPassword !== DEFAULT_FIRST_LOGIN_PASSWORD) {
+      logLoginTiming("Login FAILED (invalid first-login password)", loginStartedAt);
       const error = new Error(
         "First-time login requires the default password."
       );
@@ -320,16 +366,23 @@ export async function createStandaloneSession(employeeNo, password) {
       throw error;
     }
 
+    const writeStartedAt = performance.now();
     await setLocalCredentialPassword(
       normalizedEmployeeNo,
       DEFAULT_FIRST_LOGIN_PASSWORD,
       { mustChangePassword: true }
+    );
+    logLoginTiming(
+      "Neon first-login credential CREATE COMPLETE",
+      loginStartedAt,
+      `(step=${Math.round(performance.now() - writeStartedAt)}ms)`
     );
 
     const passwordChangeToken = createPasswordChangeToken(
       normalizedEmployeeNo
     );
 
+    logLoginTiming("Login COMPLETE (requires password change)", loginStartedAt);
     return {
       token: "",
       expiresAt: "",
@@ -340,7 +393,19 @@ export async function createStandaloneSession(employeeNo, password) {
   }
 
   if (Boolean(credentialState?.must_change_password)) {
-    if (!(await verifyLocalCredential(normalizedEmployeeNo, suppliedPassword))) {
+    const verifyStartedAt = performance.now();
+    const validPassword = await verifyLocalCredential(
+      normalizedEmployeeNo,
+      suppliedPassword
+    );
+    logLoginTiming(
+      "Password verification COMPLETE (must change)",
+      loginStartedAt,
+      `(step=${Math.round(performance.now() - verifyStartedAt)}ms)`
+    );
+
+    if (!validPassword) {
+      logLoginTiming("Login FAILED (invalid password)", loginStartedAt);
       const error = new Error("Invalid employee number or password.");
       error.statusCode = 401;
       throw error;
@@ -350,6 +415,7 @@ export async function createStandaloneSession(employeeNo, password) {
       normalizedEmployeeNo
     );
 
+    logLoginTiming("Login COMPLETE (password change required)", loginStartedAt);
     return {
       token: "",
       expiresAt: "",
@@ -359,17 +425,39 @@ export async function createStandaloneSession(employeeNo, password) {
     };
   }
 
-  if (!(await verifyLocalCredential(normalizedEmployeeNo, suppliedPassword))) {
+  const verifyStartedAt = performance.now();
+  const validPassword = await verifyLocalCredential(
+    normalizedEmployeeNo,
+    suppliedPassword
+  );
+  logLoginTiming(
+    "Password verification COMPLETE",
+    loginStartedAt,
+    `(step=${Math.round(performance.now() - verifyStartedAt)}ms)`
+  );
+
+  if (!validPassword) {
+    logLoginTiming("Login FAILED (invalid password)", loginStartedAt);
     const error = new Error("Invalid employee number or password.");
     error.statusCode = 401;
     throw error;
   }
 
+  const markLoginStartedAt = performance.now();
   await markLocalCredentialLogin(normalizedEmployeeNo);
-  return createSessionForEmployee(
+  logLoginTiming(
+    "Neon last-login update COMPLETE",
+    loginStartedAt,
+    `(step=${Math.round(performance.now() - markLoginStartedAt)}ms)`
+  );
+
+  const result = await createSessionForEmployee(
     employee,
     normalizedEmployeeNo
   );
+
+  logLoginTiming("Login COMPLETE", loginStartedAt);
+  return result;
 }
 
 export function getStandaloneUser(token) {
