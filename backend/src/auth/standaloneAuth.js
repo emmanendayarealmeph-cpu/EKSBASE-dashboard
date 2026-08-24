@@ -92,7 +92,7 @@ async function refreshEmployeeAccessFromKingdee(employeeNo, loginStartedAt = nul
     warehouseCode:
       role === "PROMOTER" ? currentAccess?.warehouseCode || "" : "",
     salesNo: role === "PROMOTER" ? normalizedEmployeeNo : "",
-    isActive: true,
+    isActive: kingdeeEmployee.isActive === true,
   });
 
   return {
