@@ -19,7 +19,7 @@ function getBearerToken(req) {
  * Authentication identifies the employee.
  * Employee Access remains the EKSBASE authorization source.
  */
-export function requireAuthenticatedUser(req, res, next) {
+export async function requireAuthenticatedUser(req, res, next) {
   try {
     const bearerToken = getBearerToken(req);
     const standaloneUser = getStandaloneUser(bearerToken);
