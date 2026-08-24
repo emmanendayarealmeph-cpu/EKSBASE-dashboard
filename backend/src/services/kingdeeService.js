@@ -1253,8 +1253,17 @@ function mapEmployeeRow(row) {
   const getValue = (fieldKey) =>
     row[employeeFieldIndex[fieldKey]] ?? "";
 
+  // Kingdee BD_Empinfo returns FForbidStatus as a status code:
+  // A = Active, B = Disabled.
+  // Keep boolean true/false compatibility in case another Kingdee
+  // configuration returns a boolean value instead.
+  const rawForbidStatus = getValue("FForbidStatus");
+  const normalizedForbidStatus =
+    String(rawForbidStatus ?? "").trim().toUpperCase();
+
   const forbidStatus =
-    getValue("FForbidStatus") === true;
+    normalizedForbidStatus === "B" ||
+    rawForbidStatus === true;
 
   return {
     salesNo:
@@ -1282,8 +1291,8 @@ function mapEmployeeRow(row) {
       getValue("F_RTA_ResignDate"),
 
     // Kingdee employee status:
-    // FForbidStatus = true  -> disabled
-    // FForbidStatus = false -> active
+    // FForbidStatus = "A" -> active
+    // FForbidStatus = "B" -> disabled
     disable:
       forbidStatus,
 
