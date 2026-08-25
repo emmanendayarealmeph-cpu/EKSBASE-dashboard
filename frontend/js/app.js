@@ -22,7 +22,6 @@ const loginEmployeeNoEl = document.getElementById("loginEmployeeNo");
 const loginPasswordEl = document.getElementById("loginPassword");
 const loginButtonEl = document.getElementById("loginButton");
 const loginMessageEl = document.getElementById("loginMessage");
-const dingtalkLoginButtonEl = document.getElementById("dingtalkLoginButton");
 const dingtalkLoginMessageEl = document.getElementById("dingtalkLoginMessage");
 const logoutButtonEl = document.getElementById("logoutButton");
 const adminButtonEl = document.getElementById("adminButton");
@@ -69,10 +68,6 @@ function setDingTalkLoginMessage(message = "", isError = true) {
   dingtalkLoginMessageEl.textContent = message;
   dingtalkLoginMessageEl.classList.toggle("error", Boolean(message && isError));
   dingtalkLoginMessageEl.classList.toggle("success", Boolean(message && !isError));
-}
-
-function showDingTalkLoginButton(show) {
-  dingtalkLoginButtonEl?.classList.toggle("hidden", !show);
 }
 
 function isDingTalkConfigured() {
@@ -126,7 +121,6 @@ async function authenticateWithDingTalk() {
   if (dingTalkLoginInProgress) return;
 
   dingTalkLoginInProgress = true;
-  dingtalkLoginButtonEl && (dingtalkLoginButtonEl.disabled = true);
   setDingTalkLoginMessage("Signing in with DingTalk...", false);
 
   try {
@@ -192,9 +186,6 @@ async function authenticateWithDingTalk() {
     setAuthenticatedUi(false);
   } finally {
     dingTalkLoginInProgress = false;
-    if (dingtalkLoginButtonEl) {
-      dingtalkLoginButtonEl.disabled = false;
-    }
   }
 }
 
@@ -412,7 +403,6 @@ async function initializeAuthentication() {
   restoreCachedUser();
 
   const inDingTalk = isDingTalkEnvironment();
-  showDingTalkLoginButton(inDingTalk);
 
   if (inDingTalk) {
     // If DingTalk already has an EKSBASE session cookie, reuse it.
@@ -485,10 +475,6 @@ loginFormEl?.addEventListener("submit", async (event) => {
   } finally {
     loginButtonEl.disabled = false;
   }
-});
-
-dingtalkLoginButtonEl?.addEventListener("click", () => {
-  authenticateWithDingTalk();
 });
 
 // Self-service password reset is intentionally disabled.
