@@ -2617,12 +2617,19 @@ function getEffectiveExportScope() {
   return scope;
 }
 
-async function exportExcel() {
-  if (!authToken) {
+  async function exportExcel() {
+  /*
+   * Standalone authentication uses authToken.
+   * DingTalk SSO uses the EKSBASE dashboard session cookie.
+   *
+   * Therefore, an authenticated DingTalk session does not have
+   * an authToken and must still be allowed to export.
+   */
+   if (!authToken && !isDingTalkSession) {
     setLoginMessage("Your session has expired. Please sign in again.");
     setAuthenticatedUi(false);
     return;
-  }
+   }
 
   const params = currentQueryParams();
   const currentUser = authenticatedUser || {};
