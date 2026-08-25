@@ -518,35 +518,43 @@ async function handleLogout() {
 }
 
 async function initializeAuthentication() {
-  setAuthenticatedUi(false);
   restoreCachedUser();
 
   const inDingTalk = isDingTalkEnvironment();
 
   const dingTalkDebug = {
-  detected: inDingTalk,
-  hasDD: Boolean(window.dd),
-  hasRequestAuthCode:
-    typeof window.dd?.requestAuthCode === "function" ||
-    typeof window.dd?.runtime?.permission?.requestAuthCode === "function",
-  userAgent: navigator.userAgent,
+    detected: inDingTalk,
+    hasDD: Boolean(window.dd),
+    hasRequestAuthCode:
+      typeof window.dd?.requestAuthCode === "function" ||
+      typeof window.dd?.runtime?.permission?.requestAuthCode === "function",
+    userAgent: navigator.userAgent,
   };
 
   console.log("[DINGTALK DEBUG]", dingTalkDebug);
 
-  if (inDingTalk && dingtalkLoginMessageEl) {
-  dingtalkLoginMessageEl.textContent =
-    `DingTalk detected: ${dingTalkDebug.detected ? "YES" : "NO"} | ` +
-    `JSAPI: ${dingTalkDebug.hasDD ? "YES" : "NO"} | ` +
-    `requestAuthCode: ${dingTalkDebug.hasRequestAuthCode ? "YES" : "NO"}`;
-  dingtalkLoginMessageEl.classList.remove("error");
-  }
+  /*
+   * IMPORTANT:
+   * When EKSBASE is opened inside DingTalk, do not display the
+   * standalone Employee No. + Password login screen.
+   *
+   * DingTalk authentication must happen automatically.
+   */
   if (inDingTalk) {
-    // DingTalk environment: use DingTalk SSO only.
-    // Standalone authentication remains available through the normal form if
-    // SSO is unavailable, but a normal browser must never enter this branch.
+    loginScreenEl?.classList.add("hidden");
+    passwordChangeScreenEl?.classList.add("hidden");
+    appShellEl?.classList.add("hidden");
 
-    // If DingTalk already has an EKSBASE session cookie, reuse it.
+    if (dingtalkLoginMessageEl) {
+      dingtalkLoginMessageEl.textContent =
+        "Signing in with DingTalk...";
+      dingtalkLoginMessageEl.classList.remove("error");
+    }
+
+    /*
+     * If DingTalk already has a valid EKSBASE session cookie,
+     * go directly to the dashboard.
+     */
     const validDingTalkSession = await validateDingTalkSession();
 
     if (validDingTalkSession) {
@@ -555,31 +563,57 @@ async function initializeAuthentication() {
       return;
     }
 
-    // In DingTalk, automatically request SSO rather than asking the
-    // employee to type the Employee No. and password.
-      if (isDingTalkConfigured()) {
+    /*
+     * No existing session — automatically perform DingTalk SSO.
+     */
+    if (isDingTalkConfigured()) {
       try {
         await authenticateWithDingTalk();
       } catch (error) {
-        setDingTalkLoginMessage(
-          error?.message ||
-            "Unable to initialize DingTalk SSO.",
-          true
+        console.error(
+          "[DINGTALK SSO] Automatic authentication failed:",
+          error
         );
+
+        /*
+         * Do NOT fall back to standalone login inside DingTalk.
+         * Authentication must remain DingTalk SSO.
+         */
+        loginScreenEl?.classList.add("hidden");
+        appShellEl?.classList.add("hidden");
+
+        if (dingtalkLoginMessageEl) {
+          dingtalkLoginMessageEl.textContent =
+            error?.message ||
+            "Unable to sign in with DingTalk.";
+          dingtalkLoginMessageEl.classList.add("error");
+        }
       }
+
       return;
     }
 
-    setDingTalkLoginMessage(
-      "DingTalk SSO is not configured yet. Please use the normal login or configure the DingTalk Client ID/Corp ID.",
-      true
-    );
-    loginEmployeeNoEl?.focus();
+    /*
+     * DingTalk detected but SSO is not configured.
+     * Keep the standalone login hidden.
+     */
+    if (dingtalkLoginMessageEl) {
+      dingtalkLoginMessageEl.textContent =
+        "DingTalk SSO is not configured.";
+      dingtalkLoginMessageEl.classList.add("error");
+    }
+
     return;
   }
 
-  // Normal browser / direct URL: standalone authentication only.
+  /*
+   * Normal browser / direct URL:
+   * standalone Employee No. + Password authentication only.
+   */
+  setAuthenticatedUi(false);
+
   const validSession = await validateExistingSession();
+
   if (validSession) {
     setAuthenticatedUi(true);
     loadDashboard();
