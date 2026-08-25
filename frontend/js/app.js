@@ -441,6 +441,23 @@ async function initializeAuthentication() {
 
   const inDingTalk = isDingTalkEnvironment();
 
+  const dingTalkDebug = {
+  detected: inDingTalk,
+  hasDD: Boolean(window.dd),
+  hasRequestAuthCode:
+    typeof window.dd?.requestAuthCode === "function",
+  userAgent: navigator.userAgent,
+  };
+
+  console.log("[DINGTALK DEBUG]", dingTalkDebug);
+
+  if (inDingTalk && dingtalkLoginMessageEl) {
+  dingtalkLoginMessageEl.textContent =
+    `DingTalk detected: ${dingTalkDebug.detected ? "YES" : "NO"} | ` +
+    `JSAPI: ${dingTalkDebug.hasDD ? "YES" : "NO"} | ` +
+    `requestAuthCode: ${dingTalkDebug.hasRequestAuthCode ? "YES" : "NO"}`;
+  dingtalkLoginMessageEl.classList.remove("error");
+  }
   if (inDingTalk) {
     // If DingTalk already has an EKSBASE session cookie, reuse it.
     const validDingTalkSession = await validateDingTalkSession();
