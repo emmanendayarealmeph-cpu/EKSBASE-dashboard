@@ -170,11 +170,22 @@ async function getEnterpriseAccessToken() {
   const clientSecret =
     required("DINGTALK_CLIENT_SECRET");
 
+  /*
+   * DingTalk's app-level access-token endpoint expects the credentials
+   * using the AppKey/AppSecret field names.
+   *
+   * For an internal DingTalk application:
+   *   AppKey    = DINGTALK_CLIENT_ID
+   *   AppSecret = DINGTALK_CLIENT_SECRET
+   *
+   * The previous implementation sent clientId/clientSecret, which caused:
+   * "appKey is mandatory for this action."
+   */
   return postJson(
     `${DINGTALK_API_BASE}/v1.0/oauth2/accessToken`,
     {
-      clientId,
-      clientSecret,
+      appKey: clientId,
+      appSecret: clientSecret,
     }
   );
 }
