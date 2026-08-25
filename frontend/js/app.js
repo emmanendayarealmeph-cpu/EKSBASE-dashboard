@@ -6,8 +6,8 @@ const AUTH_USER_KEY = "eksbase.auth.user";
 // Replace these placeholders with the real DingTalk application values
 // after the DingTalk application is configured. Never put the Client Secret
 // in frontend code.
-const DINGTALK_CLIENT_ID = "YOUR_DINGTALK_CLIENT_ID";
-const DINGTALK_CORP_ID = "YOUR_DINGTALK_CORP_ID";
+const DINGTALK_CLIENT_ID = "dingowpmmrb2amqygjed";
+const DINGTALK_CORP_ID = "ding41d48ff54497757035c2f4657eb6378f";
 
 const loginScreenEl = document.getElementById("loginScreen");
 const appShellEl = document.getElementById("appShell");
