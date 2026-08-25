@@ -68,17 +68,6 @@ export async function loginWithDingTalk(req, res, next) {
       });
     }
 
-    if (
-      employee.role !== "PROMOTER" &&
-      employee.accessLevel === "NONE"
-    ) {
-      return res.status(403).json({
-        status: "error",
-        message:
-          "Your Kingdee employee department is not mapped to an EKSBASE dashboard access level.",
-        employeeNo: identity.employeeNo,
-      });
-    }
 
     console.log(
       `[DINGTALK SSO] Dashboard session creation START +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
