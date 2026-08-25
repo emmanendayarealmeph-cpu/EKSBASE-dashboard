@@ -44,8 +44,18 @@ export async function loginWithDingTalk(req, res, next) {
      * accept an Employee No. supplied by the browser and we do not
      * require a manually-created DingTalk identity mapping.
      */
+    console.log(
+      `[DINGTALK SSO] Kingdee employee lookup START +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
+    );
+
+    const kingdeeLookupStartedAt = performance.now();
+
     const kingdeeEmployee =
       await kingdeeService.getEmployeeByEmployeeNo(identity.employeeNo);
+
+    console.log(
+      `[DINGTALK SSO] Kingdee employee lookup COMPLETE +${Math.round(performance.now() - startedAt)}ms | duration=${Math.round(performance.now() - kingdeeLookupStartedAt)}ms | found=${Boolean(kingdeeEmployee)}`
+    );
 
     if (!kingdeeEmployee) {
       return res.status(403).json({
@@ -66,7 +76,15 @@ export async function loginWithDingTalk(req, res, next) {
       });
     }
 
+    console.log(
+      `[DINGTALK SSO] EKSBASE employee access lookup START +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
+    );
+
     const employee = getEmployeeAccess(identity.employeeNo);
+
+    console.log(
+      `[DINGTALK SSO] EKSBASE employee access lookup COMPLETE +${Math.round(performance.now() - startedAt)}ms | found=${Boolean(employee)} | active=${employee ? Number(employee.isActive) === 1 : false}`
+    );
 
     if (!employee || Number(employee.isActive) !== 1) {
       return res.status(403).json({
@@ -90,10 +108,18 @@ export async function loginWithDingTalk(req, res, next) {
      * Preserve the existing EKSBASE authorization model.
      * DingTalk proves identity; employee_access controls access.
      */
+    console.log(
+      `[DINGTALK SSO] Dashboard session creation START +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
+    );
+
     setDashboardSession(res, {
       ...identity,
       providerSubject: identity.providerSubject,
     });
+
+    console.log(
+      `[DINGTALK SSO] Dashboard session creation COMPLETE +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
+    );
 
     console.log(
       `[DINGTALK SSO] Authentication COMPLETE +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
