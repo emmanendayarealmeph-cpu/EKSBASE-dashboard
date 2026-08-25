@@ -249,41 +249,31 @@ async function getEnterpriseUser(
  * Returns only normalized identity data.
  * No DingTalk access token is returned.
  */
-export async function authenticateDingTalk(
-  authCode
-) {
-  const token =
-    await exchangeAuthCode(authCode);
-
-  const userAccessToken =
-    token?.accessToken;
-
-  if (!userAccessToken) {
-    throw new Error(
-      "DingTalk did not return a user access token."
-    );
+export async function authenticateDingTalk(authCode) {
+  if (!authCode?.trim()) {
+    throw new Error("DingTalk authCode is required.");
   }
 
-  const currentUser =
-    await getCurrentUser(
-      userAccessToken
-    );
-
-  const unionId =
-    currentUser?.unionId ||
-    currentUser?.unionid;
-
-  if (!unionId) {
-    throw new Error(
-      "DingTalk did not return unionId."
-    );
-  }
-
+  /*
+   * This follows the proven DingTalk H5 SSO implementation used by the
+   * working application:
+   *
+   * authCode
+   *   -> enterprise access token
+   *   -> topapi/v2/user/getuserinfo
+   *   -> userid
+   *   -> topapi/v2/user/get
+   *   -> job_number
+   *   -> Kingdee Employee No.
+   *
+   * The browser never receives the enterprise access token.
+   */
   const enterpriseTokenResponse =
     await getEnterpriseAccessToken();
 
   const enterpriseAccessToken =
-    enterpriseTokenResponse?.accessToken;
+    enterpriseTokenResponse?.accessToken ||
+    enterpriseTokenResponse?.access_token;
 
   if (!enterpriseAccessToken) {
     throw new Error(
@@ -291,11 +281,27 @@ export async function authenticateDingTalk(
     );
   }
 
-  const userId =
-    await getUserIdByUnionId(
-      enterpriseAccessToken,
-      unionId
+  const userInfoResponse =
+    await postJson(
+      `${DINGTALK_LEGACY_BASE}/topapi/v2/user/getuserinfo?access_token=${encodeURIComponent(
+        enterpriseAccessToken
+      )}`,
+      {
+        code: authCode.trim(),
+      }
     );
+
+  const userId = String(
+    userInfoResponse?.result?.userid ||
+    userInfoResponse?.result?.userId ||
+    ""
+  ).trim();
+
+  if (!userId) {
+    throw new Error(
+      "DingTalk did not return a userid for the authorization code."
+    );
+  }
 
   const enterpriseUser =
     await getEnterpriseUser(
@@ -303,12 +309,11 @@ export async function authenticateDingTalk(
       userId
     );
 
-  const jobNumber =
-    String(
-      enterpriseUser?.job_number ||
-      enterpriseUser?.jobnumber ||
-      ""
-    ).trim();
+  const jobNumber = String(
+    enterpriseUser?.job_number ||
+    enterpriseUser?.jobnumber ||
+    ""
+  ).trim();
 
   if (!jobNumber) {
     throw new Error(
@@ -316,41 +321,28 @@ export async function authenticateDingTalk(
     );
   }
 
-  /*
-   * Critical identity rule:
-   *
-   * DingTalk Job Number = Kingdee Employee No.
-   *
-   * We do not allow the browser to supply the
-   * Employee No.
-   */
   return {
     provider: "dingtalk",
     providerSubject:
       String(
         enterpriseUser?.unionid ||
-        unionId
+        enterpriseUser?.unionId ||
+        userId
       ).trim(),
 
     employeeNo: jobNumber,
 
-    dingtalkUserId:
-      String(
-        enterpriseUser?.userid ||
-        userId
-      ).trim(),
+    dingtalkUserId: userId,
 
     displayName:
       String(
         enterpriseUser?.name ||
-        currentUser?.nick ||
         ""
       ).trim(),
 
     avatar:
       String(
         enterpriseUser?.avatar ||
-        currentUser?.avatarUrl ||
         ""
       ).trim(),
 
