@@ -8,12 +8,8 @@ import {
 } from "../auth/dashboardSession.js";
 
 import {
-  getEmployeeAccess,
-} from "../auth/employeeAccess.js";
-
-import {
-  kingdeeService,
-} from "../services/kingdeeService.js";
+  getDashboardEmployee,
+} from "../auth/dashboardEmployee.js";
 
 export async function loginWithDingTalk(req, res, next) {
   const startedAt = performance.now();
@@ -40,35 +36,21 @@ export async function loginWithDingTalk(req, res, next) {
      * Critical identity rule:
      * DingTalk Job Number = Kingdee Employee No.
      *
-     * Validate the Job Number against Kingdee itself. We do not
-     * accept an Employee No. supplied by the browser and we do not
-     * require a manually-created DingTalk identity mapping.
+     * The browser never supplies the Employee No. The backend obtains it
+     * from DingTalk and resolves that Employee No directly in Kingdee.
      */
-    console.log(
-      `[DINGTALK SSO] Kingdee employee lookup START +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
-    );
+    const employee = await getDashboardEmployee(identity.employeeNo);
 
-    const kingdeeLookupStartedAt = performance.now();
-
-    const kingdeeEmployee =
-      await kingdeeService.getEmployeeByEmployeeNo(identity.employeeNo);
-
-    console.log(
-      `[DINGTALK SSO] Kingdee employee lookup COMPLETE +${Math.round(performance.now() - startedAt)}ms | duration=${Math.round(performance.now() - kingdeeLookupStartedAt)}ms | found=${Boolean(kingdeeEmployee)}`
-    );
-
-    if (!kingdeeEmployee) {
+    if (!employee) {
       return res.status(403).json({
         status: "error",
-        message: "Your DingTalk Job Number was not found in the Kingdee Employee Master.",
+        message:
+          "Your DingTalk Job Number was not found in the Kingdee Employee Master.",
         employeeNo: identity.employeeNo,
       });
     }
 
-    // Kingdee is the authoritative source for whether the employee is active.
-    // FForbidStatus = true  -> disabled -> deny authentication.
-    // FForbidStatus = false -> active   -> continue to EKSBASE authorization.
-    if (kingdeeEmployee.isActive !== true) {
+    if (employee.disabled || employee.isActive !== 1) {
       return res.status(403).json({
         status: "error",
         message: "Your Kingdee employee account is disabled.",
@@ -76,26 +58,8 @@ export async function loginWithDingTalk(req, res, next) {
       });
     }
 
-    console.log(
-      `[DINGTALK SSO] EKSBASE employee access lookup START +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
-    );
-
-    const employee = getEmployeeAccess(identity.employeeNo);
-
-    console.log(
-      `[DINGTALK SSO] EKSBASE employee access lookup COMPLETE +${Math.round(performance.now() - startedAt)}ms | found=${Boolean(employee)} | active=${employee ? Number(employee.isActive) === 1 : false}`
-    );
-
-    if (!employee || Number(employee.isActive) !== 1) {
-      return res.status(403).json({
-        status: "error",
-        message: "Your Kingdee employee account is not configured for EKSBASE Dashboard access.",
-        employeeNo: identity.employeeNo,
-      });
-    }
-
     if (
-      String(kingdeeEmployee.salesNo || "").trim().toUpperCase() !==
+      String(employee.employeeNo).trim().toUpperCase() !==
       String(identity.employeeNo).trim().toUpperCase()
     ) {
       return res.status(403).json({
@@ -104,22 +68,29 @@ export async function loginWithDingTalk(req, res, next) {
       });
     }
 
-    /*
-     * Preserve the existing EKSBASE authorization model.
-     * DingTalk proves identity; employee_access controls access.
-     */
+    if (
+      employee.role !== "PROMOTER" &&
+      employee.accessLevel === "NONE"
+    ) {
+      return res.status(403).json({
+        status: "error",
+        message:
+          "Your Kingdee employee department is not mapped to an EKSBASE dashboard access level.",
+        employeeNo: identity.employeeNo,
+      });
+    }
+
     console.log(
       `[DINGTALK SSO] Dashboard session creation START +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
     );
 
     setDashboardSession(res, {
-      ...identity,
+      provider: "dingtalk",
       providerSubject: identity.providerSubject,
+      employeeNo: employee.employeeNo,
+      displayName: identity.displayName || employee.employeeName || "",
+      avatar: identity.avatar || "",
     });
-
-    console.log(
-      `[DINGTALK SSO] Dashboard session creation COMPLETE +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
-    );
 
     console.log(
       `[DINGTALK SSO] Authentication COMPLETE +${Math.round(performance.now() - startedAt)}ms | employeeNo=${identity.employeeNo}`
@@ -129,15 +100,8 @@ export async function loginWithDingTalk(req, res, next) {
       status: "ok",
       provider: "dingtalk",
       user: {
-        employeeNo: employee.employeeNo,
-        role: employee.role,
-        department: employee.department,
-        accessLevel: employee.accessLevel,
-        district: employee.district,
-        region: employee.region,
-        subRegion: employee.subRegion,
-        warehouseCode: employee.warehouseCode,
-        displayName: identity.displayName || kingdeeEmployee.employeeName || "",
+        ...employee,
+        displayName: identity.displayName || employee.employeeName || "",
         avatar: identity.avatar || "",
       },
     });

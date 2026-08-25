@@ -1,7 +1,6 @@
 import { getStandaloneUser } from "./standaloneAuth.js";
 import { readDashboardSession } from "./dashboardSession.js";
-import { getEmployeeByIdentity, getEmployeeAccess } from "./employeeAccess.js";
-import { kingdeeService } from "../services/kingdeeService.js";
+import { getDashboardEmployee } from "./dashboardEmployee.js";
 
 function getBearerToken(req) {
   const authorization = String(req.headers.authorization || "").trim();
@@ -9,42 +8,20 @@ function getBearerToken(req) {
   return authorization.slice(7).trim();
 }
 
-/*
+/**
  * Provider-neutral EKSBASE authentication middleware.
  *
- * Supported authentication sources:
- *   1. Standalone Employee No. + password bearer session
- *   2. Signed EKSBASE dashboard session cookie (DingTalk or future providers)
- *
- * Authentication identifies the employee.
- * Employee Access remains the EKSBASE authorization source.
+ * Authentication identifies the Employee No.
+ * Kingdee Employee Master is the authoritative source for employee status
+ * and dashboard hierarchy. No employee_access/Neon authorization lookup is
+ * performed.
  */
 export async function requireAuthenticatedUser(req, res, next) {
   try {
     const bearerToken = getBearerToken(req);
-    const standaloneUser = getStandaloneUser(bearerToken);
+    const standaloneUser = await getStandaloneUser(bearerToken);
 
     if (standaloneUser) {
-      const kingdeeEmployee =
-        await kingdeeService.getEmployeeByEmployeeNo(standaloneUser.employeeNo);
-
-      if (!kingdeeEmployee) {
-        return res.status(403).json({
-          status: "error",
-          message: "Your employee record was not found in the Kingdee Employee Master.",
-          employeeNo: standaloneUser.employeeNo,
-        });
-      }
-
-      // Kingdee is the authoritative source for employee active status.
-      if (kingdeeEmployee.isActive !== true) {
-        return res.status(403).json({
-          status: "error",
-          message: "Your Kingdee employee account is disabled.",
-          employeeNo: standaloneUser.employeeNo,
-        });
-      }
-
       req.authenticatedIdentity = {
         provider: "standalone",
         providerSubject: standaloneUser.employeeNo,
@@ -63,62 +40,26 @@ export async function requireAuthenticatedUser(req, res, next) {
       });
     }
 
-    const kingdeeEmployee =
-      await kingdeeService.getEmployeeByEmployeeNo(session.employeeNo);
+    const employee = await getDashboardEmployee(session.employeeNo);
 
-    if (!kingdeeEmployee) {
+    if (!employee || employee.disabled || employee.isActive !== 1) {
       return res.status(403).json({
         status: "error",
-        message: "Your employee record was not found in the Kingdee Employee Master.",
+        message: "Your Kingdee employee account is disabled or unavailable.",
         employeeNo: session.employeeNo,
-      });
-    }
-
-    // Kingdee is the authoritative source for employee active status.
-    if (kingdeeEmployee.isActive !== true) {
-      return res.status(403).json({
-        status: "error",
-        message: "Your Kingdee employee account is disabled.",
-        employeeNo: session.employeeNo,
-      });
-    }
-
-    const employee = session.provider === "dingtalk"
-      ? getEmployeeAccess(session.employeeNo)
-      : getEmployeeByIdentity({
-          provider: session.provider,
-          providerSubject: session.providerSubject,
-        });
-
-    if (!employee || Number(employee.isActive) !== 1) {
-      return res.status(403).json({
-        status: "error",
-        message: "Your account is not registered for EKSBASE Dashboard access.",
-      });
-    }
-
-    if (
-      String(employee.employeeNo).trim() !==
-      String(session.employeeNo).trim()
-    ) {
-      return res.status(403).json({
-        status: "error",
-        message: "Authenticated Employee No. does not match the EKSBASE Employee Access record.",
       });
     }
 
     req.authenticatedIdentity = {
+      ...session,
       provider: String(session.provider).trim().toLowerCase(),
-      providerSubject: String(session.providerSubject || "").trim(),
-      employeeNo: String(session.employeeNo).trim(),
+      providerSubject:
+        String(
+          session.providerSubject || session.subject || session.employeeNo
+        ).trim(),
+      employeeNo: employee.employeeNo,
     };
-
-    req.dashboardUser = {
-      ...employee,
-      employeeName: session.displayName || employee.employeeName || "",
-      displayName: session.displayName || "",
-      avatar: session.avatar || "",
-    };
+    req.dashboardUser = employee;
 
     return next();
   } catch (error) {

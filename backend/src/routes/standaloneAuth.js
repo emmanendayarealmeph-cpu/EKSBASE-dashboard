@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import express from "express";
 import {
   changeStandalonePassword,
@@ -11,43 +10,10 @@ import { requireAuthenticatedUser } from "../auth/requireAuthenticatedUser.js";
 
 const router = express.Router();
 
-const passwordResetTokens = new Map();
-const PASSWORD_RESET_TOKEN_TTL_MS = 10 * 60 * 1000;
-const LOCAL_PASSWORD_RESET_CODE =
-  process.env.EKSBASE_LOCAL_RESET_CODE || "EKSBASE-LOCAL-RESET";
-
 function getBearerToken(req) {
   const authorization = String(req.headers.authorization || "").trim();
   if (!authorization.toLowerCase().startsWith("bearer ")) return "";
   return authorization.slice(7).trim();
-}
-
-function clean(value) {
-  return String(value ?? "").trim();
-}
-
-function createPasswordResetToken(employeeNo) {
-  const token = crypto.randomBytes(32).toString("hex");
-  passwordResetTokens.set(token, {
-    employeeNo: clean(employeeNo),
-    expiresAt: Date.now() + PASSWORD_RESET_TOKEN_TTL_MS,
-  });
-  return token;
-}
-
-function getPasswordResetSession(token) {
-  const normalizedToken = clean(token);
-  if (!normalizedToken) return null;
-
-  const record = passwordResetTokens.get(normalizedToken);
-  if (!record) return null;
-
-  if (Date.now() >= record.expiresAt) {
-    passwordResetTokens.delete(normalizedToken);
-    return null;
-  }
-
-  return record;
 }
 
 router.post("/login", async (req, res) => {
@@ -65,7 +31,6 @@ router.post("/login", async (req, res) => {
       expiresAt: result.expiresAt
         ? new Date(result.expiresAt).toISOString()
         : "",
-      rememberMe: Boolean(result.rememberMe),
       user: result.employee,
     });
   } catch (error) {
@@ -93,7 +58,6 @@ router.post("/change-password", async (req, res) => {
       expiresAt: result.expiresAt
         ? new Date(result.expiresAt).toISOString()
         : "",
-      rememberMe: Boolean(result.rememberMe),
       user: result.employee,
     });
   } catch (error) {
@@ -129,33 +93,51 @@ router.post("/remember", async (req, res) => {
   }
 });
 
-router.post("/admin/reset-password", requireAuthenticatedUser, async (req, res) => {
-  try {
-    if (String(req.dashboardUser?.role || "").toUpperCase() !== "ADMIN") {
-      return res.status(403).json({
+/*
+ * Administrator password reset.
+ *
+ * The administrator session itself remains an environment-secret credential.
+ * The employee credential being reset is persisted in the private GitHub
+ * credential store through standaloneAuth.js.
+ */
+router.post(
+  "/admin/reset-password",
+  requireAuthenticatedUser,
+  async (req, res) => {
+    try {
+      if (String(req.authenticatedIdentity?.provider || "").toLowerCase() !== "standalone") {
+        return res.status(403).json({
+          status: "error",
+          message: "Administrator authentication is required.",
+        });
+      }
+
+      if (String(req.dashboardUser?.role || "").toUpperCase() !== "ADMIN") {
+        return res.status(403).json({
+          status: "error",
+          message: "Administrator authentication is required.",
+        });
+      }
+
+      const employeeNo = String(req.body?.employeeNo || "").trim();
+      const result = await resetEmployeePasswordByAdmin(employeeNo);
+
+      return res.json({
+        status: "ok",
+        provider: "standalone",
+        employeeNo: result.employee.employeeNo,
+        employeeName: result.employee.employeeName,
+        temporaryPassword: result.temporaryPassword,
+        requiresPasswordChange: true,
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
         status: "error",
-        message: "EKSBASE administrator access is required.",
+        message: error.message || "Password reset failed.",
       });
     }
-
-    const employeeNo = clean(req.body?.employeeNo);
-    const result = await resetEmployeePasswordByAdmin(employeeNo);
-
-    return res.json({
-      status: "ok",
-      provider: "standalone",
-      employeeNo: result.employee.employeeNo,
-      employeeName: result.employee.employeeName || "",
-      temporaryPassword: result.temporaryPassword,
-      requiresPasswordChange: true,
-    });
-  } catch (error) {
-    return res.status(error.statusCode || 400).json({
-      status: "error",
-      message: error.message || "Administrator password reset failed.",
-    });
   }
-});
+);
 
 router.get("/me", requireAuthenticatedUser, (req, res) => {
   return res.json({
