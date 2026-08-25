@@ -110,47 +110,66 @@ function waitForDingTalkJSAPI(timeoutMs = 5000) {
   });
 }
 
-async function requestDingTalkAuthCode() {
-  const dd = await waitForDingTalkJSAPI();
-
-  const corpId = getDingTalkCorpId();
-
-  if (!DINGTALK_CLIENT_ID || DINGTALK_CLIENT_ID.startsWith("YOUR_")) {
-    throw new Error("DingTalk Client ID is not configured yet.");
-  }
-
-  if (!corpId || corpId.startsWith("YOUR_")) {
-    throw new Error("DingTalk Corp ID is not configured yet.");
-  }
-
+function requestDingTalkAuthCode() {
   return new Promise((resolve, reject) => {
-    dd.requestAuthCode({
-      clientId: DINGTALK_CLIENT_ID,
-      corpId,
-      success: (result) => {
-        const code = String(
-          result?.code || result?.authCode || ""
-        ).trim();
+    const dd = window.dd;
+    if (!dd) {
+      reject(new Error("DingTalk JSAPI is not available. Please reopen EKSBASE from the DingTalk Workbench."));
+      return;
+    }
 
-        if (!code) {
-          reject(new Error("DingTalk did not return an authorization code."));
-          return;
-        }
+    const corpId = getDingTalkCorpId();
+    if (!DINGTALK_CLIENT_ID || DINGTALK_CLIENT_ID.startsWith("YOUR_")) {
+      reject(new Error("DingTalk Client ID is not configured yet."));
+      return;
+    }
+    if (!corpId || corpId.startsWith("YOUR_")) {
+      reject(new Error("DingTalk Corp ID is not configured yet."));
+      return;
+    }
 
-        resolve(code);
-      },
-      fail: (error) => {
-        console.error(
-          "[DINGTALK SSO] requestAuthCode failed",
-          error
-        );
-        reject(
-          new Error(
-            "Unable to obtain DingTalk authorization. Please try again."
-          )
-        );
-      },
-    });
+    // 3.0.25 exposes it at dd.runtime.permission.requestAuthCode; newer builds
+    // also expose dd.requestAuthCode. Use whichever is present.
+    const authFn =
+      (typeof dd.requestAuthCode === "function" && dd.requestAuthCode) ||
+      (dd.runtime && dd.runtime.permission &&
+        typeof dd.runtime.permission.requestAuthCode === "function" &&
+        dd.runtime.permission.requestAuthCode.bind(dd.runtime.permission));
+
+    if (!authFn) {
+      reject(new Error("DingTalk auth API not found on this JSAPI version."));
+      return;
+    }
+
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      const code = String(result?.code || result?.authCode || "").trim();
+      if (!code) { reject(new Error("DingTalk did not return an authorization code.")); return; }
+      settled = true;
+      resolve(code);
+    };
+    const failed = (err) => {
+      if (settled) return;
+      settled = true;
+      console.error("[DINGTALK SSO] requestAuthCode failed", err);
+      reject(new Error("Unable to obtain DingTalk authorization. Please try again."));
+    };
+
+    const start = () => {
+      const maybePromise = authFn({
+        clientId: DINGTALK_CLIENT_ID,
+        corpId,
+        onSuccess: done, success: done,
+        onFail: failed, fail: failed,
+      });
+      if (maybePromise && typeof maybePromise.then === "function") {
+        maybePromise.then(done).catch(failed);
+      }
+    };
+
+    if (typeof dd.ready === "function") dd.ready(start); else start();
+    if (typeof dd.error === "function") dd.error((e) => console.error("[DINGTALK SSO] dd.error", e));
   });
 }
 
