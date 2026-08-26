@@ -532,6 +532,22 @@ async function initializeAuthentication() {
   };
 
   console.log("[DINGTALK DEBUG]", dingTalkDebug);
+    if (inDingTalk === false) {
+    const debugMessage =
+      `DingTalk detection: ${dingTalkDebug.detected ? "YES" : "NO"}\n` +
+      `JSAPI: ${dingTalkDebug.hasDD ? "YES" : "NO"}\n` +
+      `requestAuthCode: ${
+        dingTalkDebug.hasRequestAuthCode ? "YES" : "NO"
+      }\n` +
+      `User-Agent: ${dingTalkDebug.userAgent}`;
+
+    console.warn("[DINGTALK DEBUG VISIBLE]", debugMessage);
+
+    if (dingtalkLoginMessageEl) {
+      dingtalkLoginMessageEl.textContent = debugMessage;
+      dingtalkLoginMessageEl.classList.remove("error");
+    }
+   }
 
   /*
    * IMPORTANT:
