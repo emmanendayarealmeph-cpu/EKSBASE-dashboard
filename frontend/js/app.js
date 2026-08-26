@@ -49,21 +49,35 @@ function isDingTalkEnvironment() {
   /*
    * IMPORTANT AUTHENTICATION RULE:
    *
-   * A normal browser must ALWAYS use standalone login.
+   * Do not use window.dd alone as a DingTalk detector.
+   * The DingTalk JSAPI library is loaded by EKSBASE and can expose window.dd
+   * even when EKSBASE is opened in normal Chrome/Edge.
    *
-   * Do not use window.dd as a standalone detection signal. The DingTalk
-   * JSAPI script is loaded by index.html and may expose window.dd even when
-   * EKSBASE is opened in Chrome/Edge outside the DingTalk application.
+   * Prefer DingTalk's runtime environment information when available.
+   * In the DingTalk desktop container the JSAPI runtime identifies the
+   * platform as PC/Mac, while a normal browser does not expose the same
+   * DingTalk runtime environment.
    *
-   * DingTalk SSO is therefore enabled only when the browser itself identifies
-   * as DingTalk. This keeps the two authentication methods independent:
-   *   - Normal browser / direct URL -> Standalone Employee No. + Password
-   *   - DingTalk Workbench / DingTalk app -> DingTalk SSO
+   * Fallback to the User-Agent for clients that explicitly identify as
+   * DingTalk.
    */
   const userAgent = String(navigator.userAgent || "");
   const vendor = String(navigator.vendor || "");
+  const dd = window.dd;
 
-  return /DingTalk/i.test(userAgent) || /DingTalk/i.test(vendor);
+  if (/DingTalk/i.test(userAgent) || /DingTalk/i.test(vendor)) {
+    return true;
+  }
+
+  const platform = String(dd?.env?.platform || "")
+    .trim()
+    .toLowerCase();
+
+  if (platform === "pc" || platform === "mac" || platform === "windows") {
+    return true;
+  }
+
+  return false;
 }
 
 function getDingTalkCorpId() {
@@ -522,32 +536,7 @@ async function initializeAuthentication() {
 
   const inDingTalk = isDingTalkEnvironment();
 
-  const dingTalkDebug = {
-    detected: inDingTalk,
-    hasDD: Boolean(window.dd),
-    hasRequestAuthCode:
-      typeof window.dd?.requestAuthCode === "function" ||
-      typeof window.dd?.runtime?.permission?.requestAuthCode === "function",
-    userAgent: navigator.userAgent,
-  };
-
-  console.log("[DINGTALK DEBUG]", dingTalkDebug);
-    if (inDingTalk === false) {
-    const debugMessage =
-      `DingTalk detection: ${dingTalkDebug.detected ? "YES" : "NO"}\n` +
-      `JSAPI: ${dingTalkDebug.hasDD ? "YES" : "NO"}\n` +
-      `requestAuthCode: ${
-        dingTalkDebug.hasRequestAuthCode ? "YES" : "NO"
-      }\n` +
-      `User-Agent: ${dingTalkDebug.userAgent}`;
-
-    console.warn("[DINGTALK DEBUG VISIBLE]", debugMessage);
-
-    if (dingtalkLoginMessageEl) {
-      dingtalkLoginMessageEl.textContent = debugMessage;
-      dingtalkLoginMessageEl.classList.remove("error");
-    }
-   }
+  console.log("[DINGTALK] Environment detected:", inDingTalk);
 
   /*
    * IMPORTANT:
