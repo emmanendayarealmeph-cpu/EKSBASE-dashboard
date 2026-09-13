@@ -125,14 +125,6 @@ input {
 
 .primary-button,
 .export-button,
-.navigation-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 36px;
-  margin: 0 0 12px;
-}
-
 .back-button {
   height: 40px;
   border: 0;
@@ -2994,4 +2986,9 @@ body.modal-open { overflow: hidden; }
   .models-loading {
     font-size: 9px !important;
   }
+}
+/* EKSBASE FIX — Restore Apply button font formatting */
+.date-apply-button {
+  font-size: 11px !important;
+  font-weight: 700 !important;
 }
