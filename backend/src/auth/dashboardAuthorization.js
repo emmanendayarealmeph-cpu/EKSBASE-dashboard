@@ -33,6 +33,27 @@ function upper(value) {
   return clean(value).toUpperCase();
 }
 
+const ROLE_ACCESS_LEVELS = {
+  ADMIN: "HQ",
+  CSH: "HQ",
+  RSD: "DISTRICT",
+  LA: "DISTRICT",
+  DRH: "DISTRICT",
+  RAM: "REGION",
+  RRM: "REGION",
+  RTM: "REGION",
+  RSH: "REGION",
+  KAM: "SUB_REGION",
+  SLA: "SUB_REGION",
+  SS: "SUB_REGION",
+  ASM: "SUB_REGION",
+};
+
+const ALLOWED_ROLE_CODES = new Set([
+  ...Object.keys(ROLE_ACCESS_LEVELS),
+  "PROMOTER",
+]);
+
 function normalizeRequestedLevel(value, fallback = "district") {
   const level = clean(value);
   return NAVIGATION_LEVELS.includes(level) ? level : fallback;
@@ -133,6 +154,12 @@ export function getAuthorizedDashboardScope(
     );
   }
 
+  if (!ALLOWED_ROLE_CODES.has(role)) {
+    throw new Error(
+      `Role '${role || "UNASSIGNED"}' is not authorized to access the EKSBASE dashboard.`
+    );
+  }
+
   // PROMOTER: Employee No. is the only authorization identity.
   if (role === "PROMOTER") {
     return buildScope({
@@ -151,7 +178,12 @@ export function getAuthorizedDashboardScope(
    * Requested values may control navigation/filtering because the user
    * is already authorized for the complete Organization 110 hierarchy.
    */
+  const roleAccessLevel = ROLE_ACCESS_LEVELS[role] || "";
+
+  // ADMIN and CSH are both HQ roles. Their Kingdee Department must never
+  // reduce their dashboard scope. This matches the Customer & Store Dashboard.
   const isFullAccessDepartment =
+    roleAccessLevel === "HQ" ||
     accessLevel === "ALL" ||
     accessLevel === "ADMIN" ||
     department === "ALL" ||

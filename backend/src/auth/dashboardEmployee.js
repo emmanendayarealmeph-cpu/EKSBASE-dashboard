@@ -1,6 +1,31 @@
 import { db } from "../database/database.js";
 import { kingdeeService } from "../services/kingdeeService.js";
 
+
+const ROLE_ACCESS_LEVELS = {
+  ADMIN: "HQ",
+  CSH: "HQ",
+
+  RSD: "DISTRICT",
+  LA: "DISTRICT",
+  DRH: "DISTRICT",
+
+  RAM: "REGION",
+  RRM: "REGION",
+  RTM: "REGION",
+  RSH: "REGION",
+
+  KAM: "SUB_REGION",
+  SLA: "SUB_REGION",
+  SS: "SUB_REGION",
+  ASM: "SUB_REGION",
+};
+
+const ALLOWED_ROLE_CODES = new Set([
+  ...Object.keys(ROLE_ACCESS_LEVELS),
+  "PROMOTER",
+]);
+
 function clean(value) {
   return String(value ?? "").trim();
 }
@@ -12,7 +37,7 @@ function normalizeDepartment(value) {
   return department;
 }
 
-function resolveHierarchyFromDepartment(department) {
+function resolveHierarchyFromDepartment(department, requiredAccessLevel = "") {
   const normalizedDepartment = normalizeDepartment(department);
 
   if (!normalizedDepartment) {
@@ -26,54 +51,34 @@ function resolveHierarchyFromDepartment(department) {
 
   const row = db.prepare(`
     SELECT
-      MAX(CASE
-        WHEN UPPER(TRIM(sub_region)) = UPPER(TRIM(?))
-        THEN sub_region
-      END) AS subRegion,
-      MAX(CASE
-        WHEN UPPER(TRIM(region)) = UPPER(TRIM(?))
-        THEN region
-      END) AS region,
-      MAX(CASE
-        WHEN UPPER(TRIM(district)) = UPPER(TRIM(?))
-        THEN district
-      END) AS district
+      MAX(CASE WHEN UPPER(TRIM(sub_region)) = UPPER(TRIM(?)) THEN sub_region END) AS subRegion,
+      MAX(CASE WHEN UPPER(TRIM(region)) = UPPER(TRIM(?)) THEN region END) AS region,
+      MAX(CASE WHEN UPPER(TRIM(district)) = UPPER(TRIM(?)) THEN district END) AS district
     FROM serial_main_file
-    WHERE
-      TRIM(COALESCE(sub_region, '')) <> ''
-      OR TRIM(COALESCE(region, '')) <> ''
-      OR TRIM(COALESCE(district, '')) <> ''
-  `).get(
-    normalizedDepartment,
-    normalizedDepartment,
-    normalizedDepartment
-  );
+    WHERE TRIM(COALESCE(sub_region, '')) <> ''
+       OR TRIM(COALESCE(region, '')) <> ''
+       OR TRIM(COALESCE(district, '')) <> ''
+  `).get(normalizedDepartment, normalizedDepartment, normalizedDepartment);
 
-  if (row?.subRegion) {
-    return {
-      accessLevel: "SUB_REGION",
-      district: "",
-      region: "",
-      subRegion: clean(row.subRegion),
-    };
+  // Resolve the employee only at the organizational level dictated by the role.
+  // This prevents collisions such as the same name existing as both a Region and District.
+  if (requiredAccessLevel === "SUB_REGION" && row?.subRegion) {
+    return { accessLevel: "SUB_REGION", district: "", region: "", subRegion: clean(row.subRegion) };
   }
 
-  if (row?.region) {
-    return {
-      accessLevel: "REGION",
-      district: "",
-      region: clean(row.region),
-      subRegion: "",
-    };
+  if (requiredAccessLevel === "REGION" && row?.region) {
+    return { accessLevel: "REGION", district: "", region: clean(row.region), subRegion: "" };
   }
 
-  if (row?.district) {
-    return {
-      accessLevel: "DISTRICT",
-      district: clean(row.district),
-      region: "",
-      subRegion: "",
-    };
+  if (requiredAccessLevel === "DISTRICT" && row?.district) {
+    return { accessLevel: "DISTRICT", district: clean(row.district), region: "", subRegion: "" };
+  }
+
+  // Backward-compatible fallback when no role-specific level was supplied.
+  if (!requiredAccessLevel) {
+    if (row?.subRegion) return { accessLevel: "SUB_REGION", district: "", region: "", subRegion: clean(row.subRegion) };
+    if (row?.region) return { accessLevel: "REGION", district: "", region: clean(row.region), subRegion: "" };
+    if (row?.district) return { accessLevel: "DISTRICT", district: clean(row.district), region: "", subRegion: "" };
   }
 
   return {
@@ -132,15 +137,33 @@ export async function getDashboardEmployee(employeeNo) {
   const role = clean(kingdeeEmployee.role || "STAFF").toUpperCase();
   const department = normalizeDepartment(kingdeeEmployee.department);
 
+  if (!ALLOWED_ROLE_CODES.has(role)) {
+    return {
+      employeeNo: normalizedEmployeeNo,
+      employeeName: clean(kingdeeEmployee.employeeName),
+      role,
+      department: department || "NONE",
+      accessLevel: "NONE",
+      district: "",
+      region: "",
+      subRegion: "",
+      warehouseCode: "",
+      salesNo: "",
+      isActive: 1,
+      organizationCode: "110",
+      disabled: false,
+      unauthorized: true,
+    };
+  }
+
+  const requiredAccessLevel = ROLE_ACCESS_LEVELS[role] || "PROMOTER";
+
   const hierarchy =
     role === "PROMOTER"
-      ? {
-          accessLevel: "PROMOTER",
-          district: "",
-          region: "",
-          subRegion: "",
-        }
-      : resolveHierarchyFromDepartment(department);
+      ? { accessLevel: "PROMOTER", district: "", region: "", subRegion: "" }
+      : requiredAccessLevel === "HQ"
+        ? { accessLevel: "HQ", district: "", region: "", subRegion: "" }
+        : resolveHierarchyFromDepartment(department, requiredAccessLevel);
 
   return {
     employeeNo: normalizedEmployeeNo,
