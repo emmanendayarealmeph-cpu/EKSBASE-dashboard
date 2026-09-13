@@ -386,7 +386,7 @@ function setAuthenticatedUi(isAuthenticated) {
   loginScreenEl?.classList.toggle("hidden", isAuthenticated);
   passwordChangeScreenEl?.classList.add("hidden");
   appShellEl?.classList.toggle("hidden", !isAuthenticated);
-  const isAdmin = isAuthenticated && String(authenticatedUser?.role || "").toUpperCase() === "ADMIN";
+  const isAdmin = isAuthenticated && authenticatedUser?.isAdmin === true;
   adminButtonEl?.classList.toggle("hidden", !isAdmin);
 }
 
