@@ -182,6 +182,7 @@ const employeeFields = [
   "F_RTA_Department",
   "F_RTA_Department.FName",
   "F_RTA_Role",
+  "F_RTA_Role.FNumber",
   "F_RTA_Role.FName",
   "F_RTA_HireDate",
   "F_RTA_ResignDate",
@@ -1280,7 +1281,8 @@ function mapEmployeeRow(row) {
 
     roleId:
       getValue("F_RTA_Role"),
-
+    roleCode:
+      getValue("F_RTA_Role.FNumber"),
     role:
       getValue("F_RTA_Role.FName"),
 
