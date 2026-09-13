@@ -3748,6 +3748,7 @@ const finalRows =
     district = "",
     subRegion = "",
     salesNo = "",
+    department = "",
     materialCode = "",
     category = "",
     brand = "",
@@ -4030,6 +4031,7 @@ const finalRows =
     category = "",
     brand = "",
     includeInventorySheet = true,
+    department = "",
   } = {}) {
     let [
       inventoryRows,
@@ -4089,6 +4091,12 @@ const finalRows =
         filterType,
         filterValue
       );
+    const customerSalesRows =
+      normalizeKey(department) !== ""
+        ? inventoryRows.filter(
+            (row) => normalizeKey(row?.customerRegion) === normalizeKey(department)
+          )
+        : [];
 
     const workbook =
       new ExcelJS.Workbook();
@@ -4196,6 +4204,54 @@ const finalRows =
       
     }
 
+    if (customerSalesRows.length > 0) {
+      const customerSalesSheet =
+        workbook.addWorksheet("Customer Sales Data");
+
+      customerSalesSheet.columns = inventoryExportColumns;
+
+      for (const row of customerSalesRows) {
+        customerSalesSheet.addRow({
+          warehouseCode: row.warehouseCode ?? "",
+          warehouse: row.warehouse ?? "",
+          mallName: row.mallName ?? "",
+          storeType: row.storeType ?? "",
+          district: row.district ?? "",
+          region: row.region ?? "",
+          subRegion: row.subRegion ?? "",
+          customerCode: row.customerCode ?? "",
+          customer: row.customer ?? "",
+          customerDistrict: row.customerDistrict ?? "",
+          customerRegion: row.customerRegion ?? "",
+          materialCode: row.materialCode ?? "",
+          materialName: row.materialName ?? "",
+          materialGroup: row.materialGroup ?? "",
+          model: row.model ?? "",
+          color: row.color ?? "",
+          category: row.category ?? "",
+          brand: row.brand ?? "",
+          inventoryQty: Number(row.inventoryQty) || 0,
+          sellOutQty: Number(row.sellOutQty) || 0,
+          salesAmount: Number(row.salesAmount) || 0,
+          averageDailySellOut: Number(row.averageDailySellOut) || 0,
+          daysOfSupply: row.daysOfSupply ?? "N/A",
+        });
+      }
+
+      styleReportWorksheet(
+        customerSalesSheet,
+        {
+          integerColumns: [
+            "inventoryQty",
+            "sellOutQty",
+          ],
+          amountColumns: [
+            "salesAmount",
+            "averageDailySellOut",
+          ],
+        }
+      );
+    }
     // ========================================
     // Sell-out Sheet
     // ========================================

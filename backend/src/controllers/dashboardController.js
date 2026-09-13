@@ -239,6 +239,8 @@ export const dashboardController = {
               authorizedScope.warehouseCode || "",
             salesNo:
               authorizedScope.salesNo || "",
+            department:
+              req.dashboardUser?.department || "",
 
             // Promoters export Sell-out only.
             // All non-Promoter departments export Inventory + Sell-out.

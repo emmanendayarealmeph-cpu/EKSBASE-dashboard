@@ -187,8 +187,7 @@ export function getAuthorizedDashboardScope(
     accessLevel === "ALL" ||
     accessLevel === "ADMIN" ||
     department === "ALL" ||
-    department === "ADMIN" ||
-    department.startsWith("HQ.");
+    department === "ADMIN";
 
   if (isFullAccessDepartment) {
     return buildScope({

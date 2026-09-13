@@ -831,6 +831,58 @@ const LEVEL_LABELS = {
   promoter: "Promoter",
 };
 
+/*
+ * EKSBASE Report dashboard drill-down hierarchy:
+ *
+ * HQ       -> District -> Region -> Sub-Region -> Store -> Promoter
+ * District -> Region   -> Sub-Region -> Store -> Promoter
+ * Region   -> Sub-Region -> Store -> Promoter
+ * Area     -> Store -> Promoter
+ * Promoter -> own data only
+ *
+ * The backend remains authoritative for data authorization. This function
+ * only determines the UI's starting navigation level from the authenticated
+ * role/access level.
+ */
+function getRoleStartingLevel() {
+  const role = String(
+    authenticatedUser?.role ||
+    authenticatedUser?.roleCode ||
+    ""
+  ).trim().toUpperCase();
+
+  const accessLevel = String(
+    authenticatedUser?.accessLevel ||
+    ""
+  ).trim().toUpperCase();
+
+  if (role === "PROMOTER" || accessLevel === "PROMOTER") {
+    return "promoter";
+  }
+
+  if (
+    accessLevel === "SUB_REGION" ||
+    accessLevel === "AREA" ||
+    ["KAM", "SLA", "SS", "ASM"].includes(role)
+  ) {
+    return "subRegion";
+  }
+
+  if (accessLevel === "REGION" || ["RAM", "RRM", "RTM", "RSH"].includes(role)) {
+    return "region";
+  }
+
+  if (
+    accessLevel === "DISTRICT" ||
+    ["RSD", "LA", "DRH"].includes(role)
+  ) {
+    return "district";
+  }
+
+  // ADMIN and CSH are HQ-level roles.
+  return "district";
+}
+
 const state = {
   level: "district",
   scope: {
@@ -2364,8 +2416,14 @@ async function renderCurrentPage() {
 }
 
 function updateNavigationUi() {
-  // The report title / breadcrumb / authorization banner were removed
-  // from the dashboard UI to keep the data table compact on all devices.
+  if (backButton) {
+    backButton.classList.toggle("hidden", state.history.length === 0);
+    backButton.disabled = state.history.length === 0;
+  }
+
+  if (breadcrumbEl) {
+    buildBreadcrumb();
+  }
 }
 
 function saveHistory() {
@@ -2527,6 +2585,26 @@ async function loadDashboard() {
 
     state.response = response;
 
+    /*
+     * The backend is authoritative for authorization and data scope.
+     * Preserve the frontend's requested drill-down level after navigation.
+     *
+     * On the initial dashboard load (no navigation history), use the
+     * authenticated role's required starting level:
+     * HQ -> District
+     * District -> Region
+     * Region -> Sub-Region
+     * Area -> Store
+     * Promoter -> Promoter
+     *
+     * After a drill-down, do not overwrite state.level with the backend's
+     * minimum/starting level; doing so would reset District/Region/Area
+     * users back to their starting page on every request.
+     */
+    if (state.history.length === 0) {
+      state.level = getRoleStartingLevel();
+    }
+
     await renderCurrentPage();
 
     setApiStatus(true);
@@ -2546,7 +2624,7 @@ async function loadDashboard() {
 }
 
 function resetAreaNavigation() {
-  state.level = "district";
+  state.level = getRoleStartingLevel();
   state.scope = {
     district: "",
     region: "",
@@ -2564,13 +2642,12 @@ function getEffectiveExportScope() {
   };
 
   /*
-   * The page title represents the level currently being displayed.
+   * The page level represents the level currently being displayed.
    * When that level contains exactly one visible area row, treat that
    * row as the effective export scope as well.
    *
-   * Example:
-   * District SLA -> Region SLA -> Sub-Region page showing only HQ.SLA
-   * Export should therefore use subRegion=HQ.SLA.
+   * Export therefore follows the same authorized drill-down path:
+   * HQ -> District -> Region -> Sub-Region -> Store -> Promoter.
    */
   const rows =
     state.response?.areaRows || [];
