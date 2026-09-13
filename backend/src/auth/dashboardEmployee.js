@@ -134,7 +134,7 @@ export async function getDashboardEmployee(employeeNo) {
     };
   }
 
-  const role = clean(kingdeeEmployee.roleId || kingdeeEmployee.role || "STAFF").toUpperCase();
+  const role = clean(kingdeeEmployee.roleCode || kingdeeEmployee.role || "STAFF").toUpperCase();
   const department = normalizeDepartment(kingdeeEmployee.department);
 
   if (!ALLOWED_ROLE_CODES.has(role)) {
@@ -181,4 +181,3 @@ export async function getDashboardEmployee(employeeNo) {
     disabled: false,
   };
 }
-
